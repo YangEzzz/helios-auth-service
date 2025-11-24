@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"net/http"
 
 	"github.com/gin-gonic/gin"
 
@@ -95,13 +96,19 @@ func main() {
 
 	// 8. 启动HTTP服务器
 	addr := fmt.Sprintf(":%s", cfg.Port)
+	server := &http.Server{
+		Addr:    addr,
+		Handler: r,
+	}
+
 	log.Printf("Server starting on %s", addr)
 	log.Println("Public routes:")
 	log.Println("  POST /api/v1/register - 用户注册")
 	log.Println("  POST /api/v1/login - 用户登录")
 	log.Println("Protected routes (需要 JWT Token):")
 	log.Println("  GET /api/v1/profile - 获取用户信息")
-	if err := r.Run(addr); err != nil {
+
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 }
