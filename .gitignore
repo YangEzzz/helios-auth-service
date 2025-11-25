@@ -31,3 +31,7 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Air - Live reload for Go apps
+tmp/
+build-errors.log
