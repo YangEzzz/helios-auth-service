@@ -2,20 +2,19 @@ package router
 
 import (
 	"fmt"
+	"helios-auth-service/internal/database"
 	"helios-auth-service/internal/router/api"
 	"log"
 
-	"github.com/gin-gonic/gin"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
-
 	"helios-auth-service/internal/config"
+
+	"github.com/gin-gonic/gin"
 )
 
 // SetupRouter 初始化路由
 func SetupRouter(cfg *config.Config) *gin.Engine {
 	// 1. 初始化 GORM 数据库连接
-	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+	fmt.Printf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		cfg.DatabaseHost,
 		cfg.DatabasePort,
 		cfg.DatabaseUser,
@@ -24,7 +23,14 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 		cfg.DatabaseSSLMode,
 	)
 
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	db, err := database.NewConnection(
+		cfg.DatabaseHost,
+		cfg.DatabasePort,
+		cfg.DatabaseUser,
+		cfg.DatabasePassword,
+		cfg.DatabaseName,
+		cfg.DatabaseSSLMode,
+	)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
@@ -33,6 +39,19 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 
 	// 5. 创建 Gin 引擎
 	r := gin.Default()
+
+	// CORS设置 (示例)
+	r.Use(func(c *gin.Context) {
+		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
+		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
+		if c.Request.Method == "OPTIONS" {
+			c.AbortWithStatus(204)
+			return
+		}
+		c.Next()
+	})
 
 	// 6. 注册路由
 	apiGroup := r.Group("/api")

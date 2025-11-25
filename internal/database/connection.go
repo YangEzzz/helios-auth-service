@@ -15,7 +15,7 @@ type DB struct {
 }
 
 // NewConnection 创建新的数据库连接
-func NewConnection(host, port, user, password, dbname, sslmode string) (*DB, error) {
+func NewConnection(host, port, user, password, dbname, sslmode string) (*gorm.DB, error) {
 	// 构建连接字符串
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
 		host, port, user, password, dbname, sslmode)
@@ -42,7 +42,7 @@ func NewConnection(host, port, user, password, dbname, sslmode string) (*DB, err
 	}
 
 	log.Println("Successfully connected to PostgreSQL database with GORM")
-	return &DB{db}, nil
+	return db, nil
 }
 
 // Close 关闭数据库连接

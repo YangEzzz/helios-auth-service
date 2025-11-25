@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"fmt"
 	"helios-auth-service/internal/models"
 )
 
@@ -22,6 +23,7 @@ func NewService(dao Dao, jwtSecret string) Service {
 }
 
 func (s *service) Register(ctx context.Context, email, name, password string) (*models.User, error) {
+	fmt.Println("Registering user:", email, name, password)
 	return nil, nil
 }
 
