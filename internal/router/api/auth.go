@@ -20,7 +20,7 @@ func NewAuthRouter(authService auth.Service) *AuthRouter {
 }
 
 func InitAuthRouter(r *gin.RouterGroup, db *gorm.DB, jwtSecret string) {
-	authDao := auth.NewAuthDao(db)
+	authDao := auth.NewDao(db)
 	authService := auth.NewService(authDao, jwtSecret)
 	authRouter := NewAuthRouter(authService)
 	r.POST("/login", authRouter.Login)

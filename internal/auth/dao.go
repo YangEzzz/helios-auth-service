@@ -15,7 +15,7 @@ type Dao interface {
 	GetUserByEmail(email string) (*models.User, error)
 }
 
-func NewAuthDao(db *gorm.DB) Dao {
+func NewDao(db *gorm.DB) Dao {
 	return &authDao{db: db}
 }
 
