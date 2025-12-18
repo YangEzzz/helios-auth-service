@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"helios-auth-service/internal/database"
 	"helios-auth-service/internal/router/api"
+	v1 "helios-auth-service/internal/router/api/v1"
 	"log"
 
 	"helios-auth-service/internal/config"
@@ -57,6 +58,10 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 	apiGroup := r.Group("/api")
 	{
 		api.InitAuthRouter(apiGroup, db, cfg.JWTSecret)
+	}
+	v1Group := r.Group("/api/v1")
+	{
+		v1.InitUserRouter(v1Group, db, cfg.JWTSecret)
 	}
 
 	return r

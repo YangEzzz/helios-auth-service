@@ -25,7 +25,6 @@ func NewService(dao Dao, jwtSecret string) Service {
 }
 
 func (s *service) Register(ctx context.Context, email, name, password string) (*models.User, error) {
-	fmt.Println("Registering user:", email, name, password)
 	user := models.NewUser(name, email, password)
 	err := s.dao.CreateUser(user)
 	if err != nil {
