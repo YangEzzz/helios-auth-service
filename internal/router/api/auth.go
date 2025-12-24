@@ -3,7 +3,7 @@ package api
 import (
 	"fmt"
 	"helios-auth-service/internal/auth"
-	"helios-auth-service/internal/models"
+	"helios-auth-service/internal/constant"
 	"helios-auth-service/internal/utils"
 	"net/http"
 
@@ -46,41 +46,41 @@ type LoginRequest struct {
 func (r *AuthRouter) Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": utils.GetValidationError(err)})
+		c.JSON(http.StatusBadRequest, gin.H{"error": utils.GetValidationError(err), "code": constant.ErrorCode})
 		return
 	}
-	user, err := r.authService.Login(c.Request.Context(), req.Email, req.Password)
+	token, err := r.authService.Login(c.Request.Context(), req.Email, req.Password)
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": utils.GetValidationError(err)})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": utils.GetValidationError(err), "code": constant.ErrorCode})
 		return
 	}
 
-	c.JSON(200, gin.H{"message": "Login successful", "user": user})
+	c.JSON(http.StatusOK, gin.H{"message": "Login successful", "data": token, "code": constant.SuccessCode})
 }
 
 func (r *AuthRouter) Register(c *gin.Context) {
 	var req RegisterRequest
 	fmt.Println("Registering user:", req)
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": utils.GetValidationError(err)})
+		c.JSON(http.StatusBadRequest, gin.H{"error": utils.GetValidationError(err), "code": constant.ErrorCode})
 		return
 	}
 
 	user, err := r.authService.Register(c.Request.Context(), req.Email, req.Name, req.Password)
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": utils.GetValidationError(err)})
+		c.JSON(http.StatusOK, gin.H{"message": utils.GetValidationError(err), "code": constant.ErrorCode})
 		return
 	}
 
-	c.JSON(200, gin.H{"message": "申请账号成功，等待管理员审核", "user": user})
+	c.JSON(http.StatusOK, gin.H{"message": "申请账号成功，等待管理员审核", "user": user, "code": constant.SuccessCode})
 }
 
 func GetRoleList(c *gin.Context) {
-	c.JSON(200, gin.H{"message": "获取成功", "roles": []models.UserRole{models.UserRoleSuperAdmin, models.UserRoleAdmin, models.UserRoleUser}})
+	c.JSON(http.StatusOK, gin.H{"message": "获取成功", "roles": []constant.UserRole{constant.UserRoleSuperAdmin, constant.UserRoleAdmin, constant.UserRoleUser}, "code": constant.SuccessCode})
 }
 
 func GetStatusList(c *gin.Context) {
-	c.JSON(200, gin.H{"message": "获取成功", "status": []models.UserStatus{models.UserStatusActive, models.UserStatusInactive, models.UserStatusLocked}})
+	c.JSON(http.StatusOK, gin.H{"message": "获取成功", "status": []constant.UserStatus{constant.UserStatusActive, constant.UserStatusInactive, constant.UserStatusLocked}, "code": constant.SuccessCode})
 }

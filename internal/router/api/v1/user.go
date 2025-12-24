@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"helios-auth-service/internal/constant"
 	"helios-auth-service/internal/middleware"
 	"helios-auth-service/internal/user"
 
@@ -34,8 +35,8 @@ func (r *UserRouter) GetUserByID(c *gin.Context) {
 	id := c.Query("id")
 	users, err := r.userService.GetUserByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error()})
+		c.JSON(500, gin.H{"error": err.Error(), "code": constant.ErrorCode})
 		return
 	}
-	c.JSON(200, gin.H{"user": users})
+	c.JSON(200, gin.H{"user": users, "code": constant.SuccessCode})
 }

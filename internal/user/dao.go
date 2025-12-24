@@ -1,6 +1,7 @@
 package user
 
 import (
+	"helios-auth-service/internal/constant"
 	"helios-auth-service/internal/models"
 
 	"gorm.io/gorm"
@@ -42,5 +43,5 @@ func (u *userDao) GetUserByID(id string) (*models.User, error) {
 }
 
 func (u *userDao) ApproveUser(id string) error {
-	return u.db.Model(&models.User{}).Where("id = ?", id).Update("status", models.UserStatusActive).Error
+	return u.db.Model(&models.User{}).Where("id = ?", id).Update("status", constant.UserStatusActive).Error
 }
