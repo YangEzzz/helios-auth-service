@@ -4,8 +4,6 @@ import (
 	"helios-auth-service/internal/constant"
 	"helios-auth-service/internal/middleware"
 	"helios-auth-service/internal/project"
-	"helios-auth-service/internal/utils"
-	"net/http"
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -31,4 +29,14 @@ func InitProjectRouter(r *gin.RouterGroup, db *gorm.DB, jwtSecret string) {
 	{
 		projectGroup.GET("/projects", projectRouter.GetProjectByID)
 	}
+}
+
+func (r *ProjectRouter) GetProjectByID(c *gin.Context) {
+	id := c.Query("id")
+	projects, err := r.projectService.GetProjectByID(c.Request.Context(), id)
+	if err != nil {
+		c.JSON(500, gin.H{"error": err.Error(), "code": constant.ErrorCode})
+		return
+	}
+	c.JSON(200, gin.H{"project": projects, "code": constant.SuccessCode})
 }
