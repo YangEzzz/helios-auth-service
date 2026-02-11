@@ -20,6 +20,10 @@ const (
 	UserStatusInactive = "inactive"
 	// UserStatusLocked 锁定
 	UserStatusLocked = "locked"
+	// UserStatusPending 待审核
+	UserStatusPending = "pending_approval"
+	// UserStatusRejected 已拒绝
+	UserStatusRejected = "rejected"
 )
 
 const (

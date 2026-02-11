@@ -9,6 +9,7 @@ import (
 type Service interface {
 	GetUserByID(ctx context.Context, id string) (*models.User, error)
 	ApproveUser(ctx context.Context, id string) error
+	RejectUser(ctx context.Context, id string) error
 	GetTotalUserCount(ctx context.Context) (int64, error)
 	GetUserCountByStatus(ctx context.Context, status constant.UserStatus) (int64, error)
 	GetAllUsers(ctx context.Context, page, pageSize int) ([]*models.User, int64, error)
@@ -29,6 +30,10 @@ func (s *service) GetUserByID(ctx context.Context, id string) (*models.User, err
 
 func (s *service) ApproveUser(ctx context.Context, id string) error {
 	return s.dao.ApproveUser(id)
+}
+
+func (s *service) RejectUser(ctx context.Context, id string) error {
+	return s.dao.RejectUser(id)
 }
 
 // GetTotalUserCount 获取总用户数

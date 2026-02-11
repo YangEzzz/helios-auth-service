@@ -32,6 +32,8 @@ func InitUserRouter(r *gin.RouterGroup, db *gorm.DB, jwtSecret string) {
 		userGroup.GET("/users", userRouter.GetUserByID)
 		userGroup.GET("/users/count", userRouter.GetUserCount)
 		userGroup.GET("/users/list", userRouter.GetAllUsers)
+		userGroup.POST("/approve_user", userRouter.ApproveUser)
+		userGroup.POST("/reject_user", userRouter.RejectUser)
 	}
 }
 
@@ -103,4 +105,34 @@ func (r *UserRouter) GetAllUsers(c *gin.Context) {
 		},
 		"code": constant.SuccessCode,
 	})
+}
+
+type UserActionRequest struct {
+	ID string `json:"id" binding:"required"`
+}
+
+func (r *UserRouter) ApproveUser(c *gin.Context) {
+	var req UserActionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": err.Error(), "code": constant.ErrorCode})
+		return
+	}
+	if err := r.userService.ApproveUser(c.Request.Context(), req.ID); err != nil {
+		c.JSON(500, gin.H{"error": err.Error(), "code": constant.ErrorCode})
+		return
+	}
+	c.JSON(200, gin.H{"message": "User approved successfully", "code": constant.SuccessCode})
+}
+
+func (r *UserRouter) RejectUser(c *gin.Context) {
+	var req UserActionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": err.Error(), "code": constant.ErrorCode})
+		return
+	}
+	if err := r.userService.RejectUser(c.Request.Context(), req.ID); err != nil {
+		c.JSON(500, gin.H{"error": err.Error(), "code": constant.ErrorCode})
+		return
+	}
+	c.JSON(200, gin.H{"message": "User rejected successfully", "code": constant.SuccessCode})
 }

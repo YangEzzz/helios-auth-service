@@ -18,6 +18,8 @@ type Dao interface {
 	GetUserByID(id string) (*models.User, error)
 	// ApproveUser 审核用户
 	ApproveUser(id string) error
+	// RejectUser 拒绝用户
+	RejectUser(id string) error
 	// GetTotalUserCount 获取总用户数
 	GetTotalUserCount() (int64, error)
 	// GetUserCountByStatus 根据状态获取用户数
@@ -50,6 +52,10 @@ func (u *userDao) GetUserByID(id string) (*models.User, error) {
 
 func (u *userDao) ApproveUser(id string) error {
 	return u.db.Model(&models.User{}).Where("id = ?", id).Update("status", constant.UserStatusActive).Error
+}
+
+func (u *userDao) RejectUser(id string) error {
+	return u.db.Model(&models.User{}).Where("id = ?", id).Update("status", constant.UserStatusRejected).Error
 }
 
 // GetTotalUserCount 获取总用户数
