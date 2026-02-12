@@ -2,7 +2,9 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"helios-auth-service/internal/constant"
 	"helios-auth-service/internal/models"
 	"helios-auth-service/internal/utils"
 	"time"
@@ -43,15 +45,18 @@ func (s *service) Login(ctx context.Context, email, password string) (string, er
 	fmt.Println("Login user:", email)
 	user, err := s.dao.GetUserByEmail(email)
 	if err != nil {
-		return "", fmt.Errorf("user not found: %w", err)
+		if errors.Is(err, constant.ErrUserNotFound) {
+			return "", constant.ErrUserNotFound
+		}
+		return "", fmt.Errorf("failed to get user: %w", err)
 	}
 
 	// 使用bcrypt验证密码
 	if !utils.CheckPasswordHash(password, user.PasswordHash) {
-		return "", fmt.Errorf("invalid password")
+		return "", constant.ErrInvalidPassword
 	}
-
-	token, err := utils.GenerateJWT(user.ID, s.jwtSecret, 24*time.Hour)
+	// 十天
+	token, err := utils.GenerateJWT(user.ID, s.jwtSecret, 10*24*time.Hour)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate token: %w", err)
 	}

@@ -1,6 +1,7 @@
 package user
 
 import (
+	"errors"
 	"helios-auth-service/internal/constant"
 	"helios-auth-service/internal/models"
 
@@ -26,6 +27,8 @@ type Dao interface {
 	GetUserCountByStatus(status constant.UserStatus) (int64, error)
 	// GetAllUsers 获取所有用户列表（支持分页）
 	GetAllUsers(offset, limit int) ([]*models.User, error)
+	// UpdateUserRole 更新用户角色
+	UpdateUserRole(id string, role constant.UserRole) error
 }
 
 func NewDao(db *gorm.DB) Dao {
@@ -36,6 +39,9 @@ func (u *userDao) GetUserByEmail(email string) (*models.User, error) {
 	var user models.User
 	err := u.db.Where("email = ?", email).First(&user).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, constant.ErrUserNotFound
+		}
 		return nil, err
 	}
 	return &user, nil
@@ -45,6 +51,9 @@ func (u *userDao) GetUserByID(id string) (*models.User, error) {
 	var user models.User
 	err := u.db.Where("id = ?", id).First(&user).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, constant.ErrUserNotFound
+		}
 		return nil, err
 	}
 	return &user, nil
@@ -80,4 +89,15 @@ func (u *userDao) GetAllUsers(offset, limit int) ([]*models.User, error) {
 		return nil, err
 	}
 	return users, nil
+}
+
+func (u *userDao) UpdateUserRole(id string, role constant.UserRole) error {
+	result := u.db.Model(&models.User{}).Where("id = ?", id).Update("role", role)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return constant.ErrUserNotFound
+	}
+	return nil
 }

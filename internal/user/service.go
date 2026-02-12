@@ -2,6 +2,8 @@ package user
 
 import (
 	"context"
+	"errors"
+	"helios-auth-service/internal/audit"
 	"helios-auth-service/internal/constant"
 	"helios-auth-service/internal/models"
 )
@@ -12,28 +14,47 @@ type Service interface {
 	RejectUser(ctx context.Context, id string) error
 	GetTotalUserCount(ctx context.Context) (int64, error)
 	GetUserCountByStatus(ctx context.Context, status constant.UserStatus) (int64, error)
+	// GetAllUsers 获取所有用户列表（支持分页）
 	GetAllUsers(ctx context.Context, page, pageSize int) ([]*models.User, int64, error)
+	// SetUserRole 设置用户角色 (仅管理员)
+	SetUserRole(ctx context.Context, operatorID, targetUserID string, newRole constant.UserRole) error
 }
 
 type service struct {
-	dao       Dao
-	jwtSecret string
+	dao          Dao
+	jwtSecret    string
+	auditService audit.Service
 }
 
-func NewService(dao Dao, jwtSecret string) Service {
-	return &service{dao: dao, jwtSecret: jwtSecret}
+func NewService(dao Dao, jwtSecret string, auditService audit.Service) Service {
+	return &service{dao: dao, jwtSecret: jwtSecret, auditService: auditService}
 }
 
 func (s *service) GetUserByID(ctx context.Context, id string) (*models.User, error) {
-	return s.dao.GetUserByID(id)
+	user, err := s.dao.GetUserByID(id)
+	if err != nil {
+		if errors.Is(err, constant.ErrUserNotFound) {
+			return nil, constant.ErrUserNotFound
+		}
+		return nil, err
+	}
+	return user, nil
 }
 
 func (s *service) ApproveUser(ctx context.Context, id string) error {
-	return s.dao.ApproveUser(id)
+	if err := s.dao.ApproveUser(id); err != nil {
+		return err
+	}
+	_ = s.auditService.LogAction(ctx, nil, "approve_user", "user:"+id, "Approved user", "")
+	return nil
 }
 
 func (s *service) RejectUser(ctx context.Context, id string) error {
-	return s.dao.RejectUser(id)
+	if err := s.dao.RejectUser(id); err != nil {
+		return err
+	}
+	_ = s.auditService.LogAction(ctx, nil, "reject_user", "user:"+id, "Rejected user", "")
+	return nil
 }
 
 // GetTotalUserCount 获取总用户数
@@ -67,4 +88,31 @@ func (s *service) GetAllUsers(ctx context.Context, page, pageSize int) ([]*model
 	}
 
 	return users, total, nil
+}
+
+// SetUserRole 设置用户角色
+func (s *service) SetUserRole(ctx context.Context, operatorID, targetUserID string, newRole constant.UserRole) error {
+	// 1. 获取操作者信息
+	operator, err := s.dao.GetUserByID(operatorID)
+	if err != nil {
+		if errors.Is(err, constant.ErrUserNotFound) {
+			return errors.New("operator not found")
+		}
+		return err
+	}
+
+	// 2. 检查权限 (必须是 Admin 或 SuperAdmin)
+	if operator.Role != constant.UserRoleAdmin && operator.Role != constant.UserRoleSuperAdmin {
+		return constant.ErrUnauthorized
+	}
+
+	// 3. 更新角色
+	if err := s.dao.UpdateUserRole(targetUserID, newRole); err != nil {
+		return err
+	}
+
+	// 4. 记录审计日志
+	_ = s.auditService.LogAction(ctx, nil, "set_user_role", "user:"+targetUserID, "Set role to "+string(newRole)+" by "+operator.Username, "")
+
+	return nil
 }

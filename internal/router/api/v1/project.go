@@ -1,6 +1,7 @@
 package v1
 
 import (
+	"helios-auth-service/internal/audit"
 	"helios-auth-service/internal/constant"
 	"helios-auth-service/internal/middleware"
 	"helios-auth-service/internal/project"
@@ -20,8 +21,11 @@ func NewProjectRouter(projectService project.Service) *ProjectRouter {
 }
 
 func InitProjectRouter(r *gin.RouterGroup, db *gorm.DB, jwtSecret string) {
+	auditDao := audit.NewDao(db)
+	auditService := audit.NewService(auditDao)
+
 	projectDao := project.NewDao(db)
-	projectService := project.NewService(projectDao)
+	projectService := project.NewService(projectDao, auditService)
 	projectRouter := NewProjectRouter(projectService)
 
 	projectGroup := r.Group("")

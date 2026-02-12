@@ -3,6 +3,7 @@ package utils
 import (
 	"errors"
 	"fmt"
+	"helios-auth-service/internal/constant"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
@@ -40,6 +41,17 @@ func GetValidationError(err error) string {
 	if strings.Contains(err.Error(), "connection refused") ||
 		strings.Contains(err.Error(), "database") {
 		return "数据库连接失败，请稍后重试"
+	}
+
+	// 4. 处理业务逻辑错误 (Sentinel Errors)
+	if errors.Is(err, constant.ErrUserNotFound) || errors.Is(err, constant.ErrRecordNotFound) || errors.Is(err, constant.ErrProjectNotFound) {
+		return "记录不存在"
+	}
+	if errors.Is(err, constant.ErrInvalidPassword) {
+		return "密码错误"
+	}
+	if errors.Is(err, constant.ErrEmailAlreadyExists) {
+		return "该邮箱已被注册"
 	}
 
 	return "请求参数格式错误"

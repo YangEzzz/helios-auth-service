@@ -16,7 +16,7 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 		// 1. 从请求头获取 Authorization
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Missing authorization header"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "缺少身份验证信息"})
 			c.Abort() // 终止请求，不再执行后续的 handler
 			return
 		}
@@ -24,7 +24,7 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 		// 2. 解析 Token（格式：Bearer <token>）
 		parts := strings.SplitN(authHeader, " ", 2)
 		if len(parts) != 2 || parts[0] != "Bearer" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid authorization header format"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "身份验证失败"})
 			c.Abort()
 			return
 		}
@@ -34,7 +34,7 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 		// 3. 验证 Token
 		claims, err := utils.ParseJWT(tokenString, jwtSecret)
 		if err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired token"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "token缺失或无效"})
 			c.Abort()
 			return
 		}

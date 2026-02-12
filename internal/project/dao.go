@@ -1,6 +1,8 @@
 package project
 
 import (
+	"errors"
+	"helios-auth-service/internal/constant"
 	"helios-auth-service/internal/models"
 
 	"github.com/google/uuid"
@@ -32,6 +34,9 @@ func (p *projectDao) GetProjectByProjectIDString(projectIDString string) (*model
 	var project models.Project
 	err := p.db.Where("project_id_string = ?", projectIDString).First(&project).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, constant.ErrProjectNotFound
+		}
 		return nil, err
 	}
 	return &project, nil
@@ -41,6 +46,9 @@ func (p *projectDao) GetProjectMembership(userID, projectID uuid.UUID) (*models.
 	var membership models.ProjectMembership
 	err := p.db.Where("user_id = ? AND project_id = ?", userID, projectID).First(&membership).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, constant.ErrRecordNotFound
+		}
 		return nil, err
 	}
 	return &membership, nil
@@ -58,6 +66,9 @@ func (p *projectDao) GetProjectByID(id string) (*models.Project, error) {
 	var project models.Project
 	err := p.db.Where("id = ?", id).First(&project).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, constant.ErrProjectNotFound
+		}
 		return nil, err
 	}
 	return &project, nil

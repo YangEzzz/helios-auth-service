@@ -62,6 +62,7 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 	v1Group := r.Group("/api/v1")
 	{
 		v1.InitUserRouter(v1Group, db, cfg.JWTSecret)
+		v1.InitProjectRouter(v1Group, db, cfg.JWTSecret)
 	}
 
 	return r

@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"helios-auth-service/internal/audit"
 	"helios-auth-service/internal/auth"
 	"helios-auth-service/internal/constant"
 	"helios-auth-service/internal/middleware"
@@ -31,8 +32,11 @@ func InitAuthRouter(r *gin.RouterGroup, db *gorm.DB, jwtSecret string) {
 	authDao := auth.NewDao(db)
 	authService := auth.NewService(authDao, jwtSecret)
 
+	auditDao := audit.NewDao(db)
+	auditService := audit.NewService(auditDao)
+
 	projectDao := project.NewDao(db)
-	projectService := project.NewService(projectDao)
+	projectService := project.NewService(projectDao, auditService)
 
 	authRouter := NewAuthRouter(authService, projectService)
 

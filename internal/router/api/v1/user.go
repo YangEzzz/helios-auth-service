@@ -1,8 +1,10 @@
 package v1
 
 import (
+	"errors"
 	"strconv"
 
+	"helios-auth-service/internal/audit"
 	"helios-auth-service/internal/constant"
 	"helios-auth-service/internal/middleware"
 	"helios-auth-service/internal/user"
@@ -22,8 +24,11 @@ func NewUserRouter(userService user.Service) *UserRouter {
 }
 
 func InitUserRouter(r *gin.RouterGroup, db *gorm.DB, jwtSecret string) {
+	auditDao := audit.NewDao(db)
+	auditService := audit.NewService(auditDao)
+
 	userDao := user.NewDao(db)
-	userService := user.NewService(userDao, jwtSecret)
+	userService := user.NewService(userDao, jwtSecret, auditService)
 	userRouter := NewUserRouter(userService)
 
 	userGroup := r.Group("")
@@ -34,6 +39,7 @@ func InitUserRouter(r *gin.RouterGroup, db *gorm.DB, jwtSecret string) {
 		userGroup.GET("/users/list", userRouter.GetAllUsers)
 		userGroup.POST("/approve_user", userRouter.ApproveUser)
 		userGroup.POST("/reject_user", userRouter.RejectUser)
+		userGroup.POST("/set_user_role", userRouter.SetUserRole)
 	}
 }
 
@@ -135,4 +141,36 @@ func (r *UserRouter) RejectUser(c *gin.Context) {
 		return
 	}
 	c.JSON(200, gin.H{"message": "User rejected successfully", "code": constant.SuccessCode})
+}
+
+type SetUserRoleRequest struct {
+	TargetUserID string            `json:"target_user_id" binding:"required"`
+	NewRole      constant.UserRole `json:"new_role" binding:"required"`
+}
+
+func (r *UserRouter) SetUserRole(c *gin.Context) {
+	var req SetUserRoleRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": err.Error(), "code": constant.ErrorCode})
+		return
+	}
+
+	// 从 Context 获取当前操作者 ID
+	operatorIDStr, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(401, gin.H{"error": "Unauthorized", "code": constant.ErrorCode})
+		return
+	}
+	operatorID := operatorIDStr.(string)
+
+	if err := r.userService.SetUserRole(c.Request.Context(), operatorID, req.TargetUserID, req.NewRole); err != nil {
+		if errors.Is(err, constant.ErrUnauthorized) {
+			c.JSON(403, gin.H{"error": "权限不足", "code": constant.ErrorCode})
+			return
+		}
+		c.JSON(500, gin.H{"error": err.Error(), "code": constant.ErrorCode})
+		return
+	}
+
+	c.JSON(200, gin.H{"message": "User role updated successfully", "code": constant.SuccessCode})
 }
