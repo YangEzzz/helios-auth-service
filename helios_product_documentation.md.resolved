@@ -1,0 +1,1096 @@
+# Helios 认证服务 - 完整产品文档
+
+## 📋 文档信息
+
+| 项目 | 内容 |
+|------|------|
+| **产品名称** | Helios 认证服务 |
+| **产品定位** | 部门级身份认证与授权中心 (IDaaS) |
+| **文档版本** | V3.0 |
+| **最后更新** | 2026-02-13 |
+
+---
+
+## 🎯 产品概述
+
+### 产品愿景
+
+Helios 是一个统一的身份认证与授权服务平台,为部门内所有应用系统提供集中的用户身份管理、权限控制和单点登录(SSO)能力。实现"一次申请,多次授权,处处使用"的安全便捷体验。
+
+### 核心价值
+
+- **统一身份管理**: 员工在 Helios 拥有唯一账户,一次注册全局使用
+- **集中权限控制**: 所有授权操作在统一后台进行,避免权限分散
+- **申请-审批机制**: 新账户创建需管理员审批,确保安全性
+- **角色模板化**: 支持项目级角色模板,简化权限分配流程
+- **完整审计日志**: 记录所有关键操作,确保可追溯性
+
+### 目标用户
+
+1. **普通员工**: 申请账户后可访问被授权的所有内部系统
+2. **系统管理员**: 审批账户申请、分配权限、管理用户生命周期
+3. **项目负责人**: 定义项目角色模板,说明角色权限
+4. **业务系统**: 通过 API 验证用户身份和获取项目角色
+
+---
+
+## 🏗️ 系统架构
+
+### 技术栈
+
+- **后端框架**: Gin (Go)
+- **数据库**: PostgreSQL + GORM
+- **认证方式**: JWT (JSON Web Token)
+- **API 风格**: RESTful API
+
+### 核心模块
+
+```mermaid
+graph TB
+    subgraph "Helios 认证服务"
+        Router[路由层 Router]
+        Middleware[中间件层 Middleware]
+        API[API 层]
+        Service[服务层 Service]
+        DAO[数据访问层 DAO]
+        DB[(PostgreSQL 数据库)]
+    end
+    
+    Client[客户端/业务系统] --> Router
+    Router --> Middleware
+    Middleware --> API
+    API --> Service
+    Service --> DAO
+    DAO --> DB
+    
+    style Helios 认证服务 fill:#e1f5ff
+    style DB fill:#fff3cd
+```
+
+### 分层架构说明
+
+| 层级 | 职责 | 主要组件 |
+|------|------|----------|
+| **路由层** | 请求分发和路由注册 | [router.go](file:///Users/yorenz/Desktop/webProjet/helios-auth-service/internal/router/router.go) |
+| **中间件层** | JWT 认证、CORS 处理 | [auth.go](file:///Users/yorenz/Desktop/webProjet/helios-auth-service/internal/middleware/auth.go) |
+| **API 层** | 请求处理、参数验证 | [auth.go](file:///Users/yorenz/Desktop/webProjet/helios-auth-service/internal/middleware/auth.go), [user.go](file:///Users/yorenz/Desktop/webProjet/helios-auth-service/internal/router/api/v1/user.go), [project.go](file:///Users/yorenz/Desktop/webProjet/helios-auth-service/internal/router/api/v1/project.go) |
+| **服务层** | 业务逻辑处理 | `user/service.go`, `project/service.go` |
+| **DAO 层** | 数据库操作 | `user/dao.go`, `project/dao.go` |
+| **数据库层** | 数据持久化 | PostgreSQL |
+
+---
+
+## 📊 数据模型
+
+### ER 图
+
+```mermaid
+erDiagram
+    USERS ||--o{ PROJECT_MEMBERSHIPS : "has"
+    PROJECTS ||--o{ PROJECT_MEMBERSHIPS : "contains"
+    PROJECTS ||--o{ PROJECT_ROLE_TEMPLATES : "defines"
+    USERS ||--o{ AUDIT_LOGS : "generates"
+    
+    USERS {
+        uuid id PK
+        string username UK
+        string email UK
+        string password_hash
+        enum role "全局角色"
+        enum status "账户状态"
+        text application_reason
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    PROJECTS {
+        int id PK
+        string project_name
+        string project_id_string UK
+        text description
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    PROJECT_ROLE_TEMPLATES {
+        int id PK
+        int project_id FK
+        string role_name
+        text description
+    }
+    
+    PROJECT_MEMBERSHIPS {
+        int id PK
+        uuid user_id FK
+        int project_id FK
+        string role_in_project
+        timestamp created_at
+    }
+    
+    AUDIT_LOGS {
+        int id PK
+        uuid user_id FK
+        string action
+        text details
+        timestamp created_at
+    }
+```
+
+### 核心表说明
+
+#### 1. users - 用户表
+
+存储所有用户的基本信息和全局角色。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| [id](file:///Users/yorenz/Desktop/webProjet/helios-auth-service/internal/middleware/auth.go#12-49) | UUID | 主键,全局唯一标识符 |
+| `username` | VARCHAR | 用户名,唯一 |
+| `email` | VARCHAR | 邮箱,唯一 |
+| `password_hash` | VARCHAR | 加密后的密码 |
+| `role` | ENUM | 全局角色: `super_admin`, `admin`, `user` |
+| `status` | ENUM | 状态: `pending_approval`, `active`, `inactive`, `locked`, `rejected` |
+| `application_reason` | TEXT | 申请理由 |
+
+**全局角色说明**:
+- `super_admin`: 超级管理员,拥有所有权限
+- `admin`: 管理员,可审批用户、分配权限
+- `user`: 普通用户,仅可访问被授权的项目
+
+#### 2. projects - 项目表
+
+存储所有接入 Helios 的业务项目信息。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| [id](file:///Users/yorenz/Desktop/webProjet/helios-auth-service/internal/middleware/auth.go#12-49) | INT | 主键 |
+| `project_name` | VARCHAR | 项目名称 |
+| `project_id_string` | VARCHAR | 项目唯一标识符,用于 API 调用 |
+| `description` | TEXT | 项目描述 |
+
+#### 3. project_role_templates - 项目角色模板表
+
+项目负责人定义的角色模板,用于规范化权限分配。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| [id](file:///Users/yorenz/Desktop/webProjet/helios-auth-service/internal/middleware/auth.go#12-49) | INT | 主键 |
+| `project_id` | INT | 关联项目 ID |
+| `role_name` | VARCHAR | 角色名称,如 `developer`, `translator` |
+| `description` | TEXT | 角色说明 |
+
+**唯一约束**: [(project_id, role_name)](file:///Users/yorenz/Desktop/webProjet/helios-auth-service/internal/router/api/auth.go#63-78)
+
+#### 4. project_memberships - 项目成员关系表
+
+记录用户在各个项目中的角色分配。
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| [id](file:///Users/yorenz/Desktop/webProjet/helios-auth-service/internal/middleware/auth.go#12-49) | INT | 主键 |
+| `user_id` | UUID | 用户 ID |
+| `project_id` | INT | 项目 ID |
+| `role_in_project` | VARCHAR | 用户在该项目中的本地角色 |
+
+**唯一约束**: [(user_id, project_id)](file:///Users/yorenz/Desktop/webProjet/helios-auth-service/internal/router/api/auth.go#63-78) - 一个用户在一个项目中只能有一个角色
+
+#### 5. audit_logs - 审计日志表
+
+记录所有关键操作,用于安全审计和问题追溯。
+
+---
+
+## 🔄 核心业务流程
+
+### 1. 用户注册与审批流程
+
+```mermaid
+sequenceDiagram
+    participant User as 新用户
+    participant LoginPage as 登录页面
+    participant Helios as Helios 后端
+    participant DB as 数据库
+    participant Admin as 管理员
+    
+    User->>LoginPage: 访问业务系统
+    LoginPage->>User: 显示"申请账户"按钮
+    User->>Helios: POST /api/register<br/>{email, name, password}
+    
+    Helios->>Helios: 验证邮箱格式
+    Helios->>Helios: 密码加密 (bcrypt)
+    Helios->>DB: 创建用户记录<br/>status='pending_approval'
+    DB-->>Helios: 创建成功
+    Helios-->>User: 返回"申请成功,等待审批"
+    
+    Note over Admin: 管理员登录后台
+    Admin->>Helios: GET /api/v1/users/list<br/>?status=pending_approval
+    Helios->>DB: 查询待审批用户
+    DB-->>Helios: 返回用户列表
+    Helios-->>Admin: 显示待审批列表
+    
+    alt 批准申请
+        Admin->>Helios: POST /api/v1/approve_user<br/>{id: user_id}
+        Helios->>DB: UPDATE users<br/>SET status='active'
+        Helios->>DB: 记录审计日志
+        Helios-->>Admin: 返回"批准成功"
+        Note over User: 用户可以登录
+    else 拒绝申请
+        Admin->>Helios: POST /api/v1/reject_user<br/>{id: user_id}
+        Helios->>DB: UPDATE users<br/>SET status='rejected'
+        Helios->>DB: 记录审计日志
+        Helios-->>Admin: 返回"已拒绝"
+        Note over User: 用户无法登录
+    end
+```
+
+**流程说明**:
+
+1. **用户申请阶段**:
+   - 用户填写邮箱、用户名、密码
+   - 系统创建 `status='pending_approval'` 的用户记录
+   - 密码使用 bcrypt 加密存储
+
+2. **管理员审批阶段**:
+   - 管理员在后台查看待审批列表
+   - 可以批准(status → `active`)或拒绝(status → `rejected`)
+   - 所有操作记录到审计日志
+
+### 2. 用户登录流程
+
+```mermaid
+sequenceDiagram
+    participant User as 用户
+    participant Client as 客户端
+    participant Helios as Helios 后端
+    participant DB as 数据库
+    
+    User->>Client: 输入邮箱和密码
+    Client->>Helios: POST /api/login<br/>{email, password}
+    
+    Helios->>DB: 根据 email 查询用户
+    DB-->>Helios: 返回用户信息
+    
+    alt 用户不存在
+        Helios-->>Client: 返回"用户不存在"
+    else 用户存在
+        Helios->>Helios: 验证密码 (bcrypt.CompareHashAndPassword)
+        
+        alt 密码错误
+            Helios-->>Client: 返回"密码错误"
+        else 密码正确
+            Helios->>Helios: 检查用户状态
+            
+            alt status != 'active'
+                Helios-->>Client: 返回"账户未激活或已锁定"
+            else status == 'active'
+                Helios->>Helios: 生成 JWT Token<br/>payload: {user_id, email, role}
+                Helios-->>Client: 返回 {token, user_info}
+                Client->>Client: 存储 Token (localStorage)
+                Client-->>User: 登录成功,跳转主页
+            end
+        end
+    end
+```
+
+**JWT Token 结构**:
+```json
+{
+  "user_id": "uuid",
+  "email": "user@example.com",
+  "role": "user",
+  "exp": 1234567890
+}
+```
+
+### 3. 项目创建与角色模板管理流程
+
+```mermaid
+sequenceDiagram
+    participant Admin as 管理员
+    participant ProjectOwner as 项目负责人
+    participant Helios as Helios 后端
+    participant DB as 数据库
+    
+    Note over Admin: 创建项目
+    Admin->>Helios: POST /api/v1/projects<br/>{project_name, project_id_string, description}
+    Helios->>DB: INSERT INTO projects
+    DB-->>Helios: 返回项目 ID
+    Helios->>DB: 记录审计日志
+    Helios-->>Admin: 返回"项目创建成功"
+    
+    Note over ProjectOwner: 添加角色模板
+    ProjectOwner->>Helios: POST /api/v1/add_project_template<br/>{project_id, role_name, description}
+    
+    Helios->>DB: 检查项目是否存在
+    Helios->>DB: 检查角色名是否重复
+    
+    alt 角色已存在
+        Helios-->>ProjectOwner: 返回"角色已存在"
+    else 角色不存在
+        Helios->>DB: INSERT INTO project_role_templates
+        Helios->>DB: 记录审计日志
+        Helios-->>ProjectOwner: 返回"角色模板添加成功"
+    end
+    
+    Note over ProjectOwner: 示例:为 Nexus 项目添加角色
+    ProjectOwner->>Helios: 添加 "developer" 角色
+    ProjectOwner->>Helios: 添加 "translator" 角色
+    ProjectOwner->>Helios: 添加 "reviewer" 角色
+```
+
+**角色模板示例**:
+
+| 项目 | 角色名 | 说明 |
+|------|--------|------|
+| Nexus | developer | 开发人员,可编辑代码和配置 |
+| Nexus | translator | 翻译人员,可编辑翻译内容 |
+| Nexus | reviewer | 审核人员,仅可查看和审核 |
+
+### 4. 用户授权流程(基于角色模板)
+
+```mermaid
+sequenceDiagram
+    participant Admin as 管理员
+    participant Helios as Helios 后端
+    participant DB as 数据库
+    
+    Note over Admin: 为用户分配项目权限
+    Admin->>Helios: 进入权限管理页面
+    Admin->>Helios: 选择用户"小王"
+    Admin->>Helios: 选择项目"Nexus"
+    
+    Helios->>DB: 查询 Nexus 的角色模板
+    DB-->>Helios: 返回 [developer, translator, reviewer]
+    Helios-->>Admin: 显示角色下拉框
+    
+    Admin->>Helios: 选择角色"developer"
+    Admin->>Helios: 点击"确认授权"
+    
+    Helios->>DB: 检查是否已有授权记录
+    
+    alt 已有授权
+        Helios->>DB: UPDATE project_memberships<br/>SET role_in_project='developer'
+    else 无授权
+        Helios->>DB: INSERT INTO project_memberships<br/>(user_id, project_id, role_in_project)
+    end
+    
+    Helios->>DB: 记录审计日志<br/>action='assign_project_role'
+    Helios-->>Admin: 返回"授权成功"
+```
+
+**授权记录示例**:
+```json
+{
+  "user_id": "uuid-of-xiaowang",
+  "project_id": 1,
+  "role_in_project": "developer",
+  "created_at": "2026-02-13T12:00:00Z"
+}
+```
+
+### 5. 业务系统验证用户权限流程
+
+```mermaid
+sequenceDiagram
+    participant User as 用户
+    participant NexusFE as Nexus 前端
+    participant NexusBE as Nexus 后端
+    participant Helios as Helios 后端
+    participant DB as 数据库
+    
+    User->>NexusFE: 访问 Nexus 系统
+    NexusFE->>NexusBE: GET /api/i18n/entries<br/>Authorization: Bearer <jwt>
+    
+    NexusBE->>Helios: GET /api/auth/verify<br/>?project_id_string=nexus_i18n<br/>Authorization: Bearer <jwt>
+    
+    Helios->>Helios: 验证 JWT 签名
+    
+    alt JWT 无效或过期
+        Helios-->>NexusBE: 401 Unauthorized
+        NexusBE-->>NexusFE: 401 Unauthorized
+        NexusFE-->>User: 跳转登录页
+    else JWT 有效
+        Helios->>Helios: 从 JWT 解析 user_id
+        Helios->>DB: 根据 project_id_string 查询项目
+        DB-->>Helios: 返回 project_id
+        
+        Helios->>DB: 查询 project_memberships<br/>WHERE user_id AND project_id
+        
+        alt 无授权记录
+            Helios-->>NexusBE: 403 Forbidden<br/>{is_valid: false, error: "无权限"}
+            NexusBE-->>NexusFE: 403 Forbidden
+            NexusFE-->>User: 显示"无权限访问"
+        else 有授权记录
+            DB-->>Helios: 返回 role_in_project='developer'
+            Helios-->>NexusBE: 200 OK<br/>{is_valid: true, user_id, role_in_project: 'developer'}
+            
+            NexusBE->>NexusBE: 根据 'developer' 角色<br/>执行内部 RBAC 判断
+            NexusBE->>DB: 查询业务数据
+            DB-->>NexusBE: 返回数据
+            NexusBE-->>NexusFE: 返回业务数据
+            NexusFE-->>User: 显示数据
+        end
+    end
+```
+
+**验证 API 响应示例**:
+
+成功响应:
+```json
+{
+  "is_valid": true,
+  "user_id": "uuid-of-xiaowang",
+  "role_in_project": "developer",
+  "code": 200
+}
+```
+
+失败响应:
+```json
+{
+  "is_valid": false,
+  "error": "用户未被授权访问该项目",
+  "code": 403
+}
+```
+
+### 6. 设置用户全局角色流程
+
+```mermaid
+sequenceDiagram
+    participant SuperAdmin as 超级管理员
+    participant Helios as Helios 后端
+    participant DB as 数据库
+    
+    SuperAdmin->>Helios: POST /api/v1/set_user_role<br/>{target_user_id, new_role}
+    
+    Helios->>Helios: 从 JWT 获取操作者 ID
+    Helios->>DB: 查询操作者角色
+    DB-->>Helios: 返回操作者角色
+    
+    alt 操作者不是 super_admin
+        Helios-->>SuperAdmin: 403 权限不足
+    else 操作者是 super_admin
+        Helios->>DB: UPDATE users<br/>SET role='admin'<br/>WHERE id=target_user_id
+        Helios->>DB: 记录审计日志<br/>action='set_user_role'
+        Helios-->>SuperAdmin: 返回"角色更新成功"
+    end
+```
+
+**权限说明**:
+- 只有 `super_admin` 可以修改用户的全局角色
+- 可设置的角色: `super_admin`, `admin`, `user`
+
+---
+
+## 🔌 API 接口文档
+
+### 认证相关 API
+
+#### 1. 用户注册
+
+```http
+POST /api/register
+Content-Type: application/json
+
+{
+  "name": "张三",
+  "email": "zhangsan@example.com",
+  "password": "password123"
+}
+```
+
+**响应**:
+```json
+{
+  "message": "申请账号成功,等待管理员审核",
+  "user": {
+    "id": "uuid",
+    "username": "张三",
+    "email": "zhangsan@example.com",
+    "status": "pending_approval"
+  },
+  "code": 200
+}
+```
+
+#### 2. 用户登录
+
+```http
+POST /api/login
+Content-Type: application/json
+
+{
+  "email": "zhangsan@example.com",
+  "password": "password123"
+}
+```
+
+**响应**:
+```json
+{
+  "message": "Login successful",
+  "data": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "code": 200
+}
+```
+
+#### 3. 验证用户权限
+
+```http
+GET /api/auth/verify?project_id_string=nexus_i18n
+Authorization: Bearer <jwt_token>
+```
+
+**响应**:
+```json
+{
+  "is_valid": true,
+  "user_id": "uuid",
+  "role_in_project": "developer",
+  "code": 200
+}
+```
+
+### 用户管理 API
+
+#### 4. 获取用户列表
+
+```http
+GET /api/v1/users/list?page=1&page_size=10
+Authorization: Bearer <jwt_token>
+```
+
+**响应**:
+```json
+{
+  "message": "获取成功",
+  "data": {
+    "users": [...],
+    "total": 100,
+    "page": 1,
+    "page_size": 10,
+    "total_pages": 10
+  },
+  "code": 200
+}
+```
+
+#### 5. 批准用户申请
+
+```http
+POST /api/v1/approve_user
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+
+{
+  "id": "user-uuid"
+}
+```
+
+#### 6. 拒绝用户申请
+
+```http
+POST /api/v1/reject_user
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+
+{
+  "id": "user-uuid"
+}
+```
+
+#### 7. 设置用户全局角色
+
+```http
+POST /api/v1/set_user_role
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+
+{
+  "target_user_id": "user-uuid",
+  "new_role": "admin"
+}
+```
+
+### 项目管理 API
+
+#### 8. 创建项目
+
+```http
+POST /api/v1/projects
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+
+{
+  "project_name": "Nexus 国际化平台",
+  "project_id_string": "nexus_i18n",
+  "description": "多语言协作平台"
+}
+```
+
+#### 9. 获取项目信息
+
+```http
+GET /api/v1/projects?id=1
+Authorization: Bearer <jwt_token>
+```
+
+#### 10. 删除项目
+
+```http
+POST /api/v1/delete_project
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+
+{
+  "id": "1"
+}
+```
+
+#### 11. 添加项目角色模板
+
+```http
+POST /api/v1/add_project_template
+Authorization: Bearer <jwt_token>
+Content-Type: application/json
+
+{
+  "project_id": "1",
+  "role_name": "developer",
+  "description": "开发人员,可编辑代码和配置"
+}
+```
+
+---
+
+## 🔐 安全机制
+
+### JWT 认证流程
+
+```mermaid
+graph LR
+    A[用户登录] --> B[验证用户名密码]
+    B --> C[生成 JWT Token]
+    C --> D[返回 Token 给客户端]
+    D --> E[客户端存储 Token]
+    E --> F[后续请求携带 Token]
+    F --> G[中间件验证 Token]
+    G --> H{Token 有效?}
+    H -->|是| I[允许访问]
+    H -->|否| J[返回 401]
+```
+
+### 中间件认证机制
+
+```go
+// AuthMiddleware 工作流程
+1. 从请求头获取 Authorization
+2. 解析 "Bearer <token>" 格式
+3. 验证 JWT 签名和过期时间
+4. 解析 user_id 并存入 Context
+5. 继续执行后续 handler
+```
+
+### 密码安全
+
+- 使用 **bcrypt** 算法加密密码
+- 密码最小长度: 6 位
+- 存储密码哈希值,不存储明文
+
+### CORS 配置
+
+```go
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Methods: POST, GET, PUT, DELETE, OPTIONS
+Access-Control-Allow-Headers: Content-Type, Authorization
+```
+
+---
+
+## 📈 管理后台功能模块
+
+### 1. 仪表盘 (Dashboard)
+
+**功能**:
+- 显示待审批申请数量
+- 显示用户统计信息(总数、活跃、锁定等)
+- 显示项目统计信息
+- 显示最近操作日志
+
+### 2. 账户申请审批 (Account Approvals)
+
+**功能**:
+- 查看所有待审批申请列表
+- 查看申请详情(邮箱、用户名、申请理由)
+- 批准或拒绝申请
+- 批量操作支持
+
+### 3. 用户管理 (User Management)
+
+**功能**:
+- 用户列表查看(分页、搜索、筛选)
+- 用户详情查看
+- 修改用户全局角色
+- 锁定/解锁用户账户
+- 查看用户的项目授权记录
+
+### 4. 项目管理 (Project Management)
+
+**功能**:
+- 项目列表查看
+- 创建新项目
+- 编辑项目信息
+- 删除项目
+- 管理项目角色模板
+
+### 5. 权限视图 (Permission Views)
+
+**两种视图模式**:
+
+#### 用户视角
+- 选择用户 → 查看该用户在各项目的角色
+- 为用户添加新项目授权
+- 修改用户在项目中的角色
+- 移除用户的项目授权
+
+#### 项目视角
+- 选择项目 → 查看该项目的所有成员
+- 为项目添加新成员
+- 修改成员角色
+- 移除项目成员
+
+### 6. 操作日志 (Audit Logs)
+
+**记录的操作**:
+- 用户注册
+- 账户审批(批准/拒绝)
+- 角色修改
+- 项目创建/删除
+- 权限分配/移除
+- 角色模板管理
+
+**日志字段**:
+- 操作时间
+- 操作者
+- 操作类型
+- 操作详情
+- IP 地址
+
+---
+
+## 🎨 前端页面结构建议
+
+### 页面导航
+
+```
+Helios 管理后台
+├── 仪表盘
+├── 账户审批
+│   ├── 待审批列表
+│   └── 审批历史
+├── 用户管理
+│   ├── 用户列表
+│   └── 用户详情
+├── 项目管理
+│   ├── 项目列表
+│   ├── 项目详情
+│   └── 角色模板管理
+├── 权限管理
+│   ├── 用户视角
+│   └── 项目视角
+└── 操作日志
+```
+
+### 关键页面流程图
+
+#### 账户审批页面流程
+
+```mermaid
+graph TD
+    A[进入账户审批页面] --> B[加载待审批列表]
+    B --> C{有待审批申请?}
+    C -->|是| D[显示申请列表]
+    C -->|否| E[显示"暂无待审批申请"]
+    
+    D --> F[点击查看详情]
+    F --> G[显示申请人信息]
+    G --> H{管理员操作}
+    
+    H -->|批准| I[调用 approve_user API]
+    H -->|拒绝| J[调用 reject_user API]
+    
+    I --> K[刷新列表]
+    J --> K
+    K --> B
+```
+
+#### 权限分配页面流程
+
+```mermaid
+graph TD
+    A[进入权限管理页面] --> B{选择视角}
+    
+    B -->|用户视角| C[选择用户]
+    C --> D[加载用户的项目授权]
+    D --> E[点击"添加项目授权"]
+    E --> F[选择项目]
+    F --> G[加载项目角色模板]
+    G --> H[选择角色]
+    H --> I[确认授权]
+    
+    B -->|项目视角| J[选择项目]
+    J --> K[加载项目成员列表]
+    K --> L[点击"添加成员"]
+    L --> M[选择用户]
+    M --> N[选择角色]
+    N --> O[确认添加]
+    
+    I --> P[调用授权 API]
+    O --> P
+    P --> Q[刷新数据]
+```
+
+---
+
+## 🚀 部署架构
+
+### 推荐部署架构
+
+```mermaid
+graph TB
+    subgraph "客户端层"
+        Web[Web 浏览器]
+        Mobile[移动应用]
+    end
+    
+    subgraph "负载均衡层"
+        LB[Nginx/Load Balancer]
+    end
+    
+    subgraph "应用层"
+        App1[Helios 实例 1]
+        App2[Helios 实例 2]
+        App3[Helios 实例 N]
+    end
+    
+    subgraph "数据层"
+        DB[(PostgreSQL 主库)]
+        DBSlave[(PostgreSQL 从库)]
+        Redis[(Redis 缓存)]
+    end
+    
+    Web --> LB
+    Mobile --> LB
+    LB --> App1
+    LB --> App2
+    LB --> App3
+    
+    App1 --> DB
+    App2 --> DB
+    App3 --> DB
+    
+    App1 --> Redis
+    App2 --> Redis
+    App3 --> Redis
+    
+    DB --> DBSlave
+```
+
+### 环境配置
+
+**开发环境**:
+```bash
+DATABASE_HOST=localhost
+DATABASE_PORT=5432
+DATABASE_USER=helios_dev
+DATABASE_NAME=helios_dev
+JWT_SECRET=dev_secret_key
+```
+
+**生产环境**:
+```bash
+DATABASE_HOST=prod-db.example.com
+DATABASE_PORT=5432
+DATABASE_USER=helios_prod
+DATABASE_NAME=helios_prod
+JWT_SECRET=<strong_random_secret>
+```
+
+---
+
+## 📝 使用场景示例
+
+### 场景 1: 新员工入职
+
+1. **员工**: 访问任一内部系统,点击"申请账户"
+2. **员工**: 填写邮箱、用户名、密码、申请理由
+3. **系统**: 创建 `pending_approval` 状态的用户
+4. **管理员**: 登录后台,查看待审批列表
+5. **管理员**: 审核通过,用户状态变为 `active`
+6. **员工**: 收到通知,可以登录系统
+
+### 场景 2: 为员工分配项目权限
+
+1. **管理员**: 登录后台,进入权限管理
+2. **管理员**: 选择用户"小王"
+3. **管理员**: 点击"添加项目授权"
+4. **管理员**: 选择项目"Nexus"
+5. **系统**: 显示 Nexus 的角色模板下拉框
+6. **管理员**: 选择角色"developer"
+7. **管理员**: 确认授权
+8. **系统**: 在 `project_memberships` 表中创建记录
+9. **小王**: 现在可以以 developer 角色访问 Nexus 系统
+
+### 场景 3: 业务系统验证用户
+
+1. **用户**: 访问 Nexus 系统,携带 JWT Token
+2. **Nexus 后端**: 向 Helios 发起验证请求
+3. **Helios**: 验证 JWT,查询用户在 Nexus 的角色
+4. **Helios**: 返回 `{is_valid: true, role_in_project: "developer"}`
+5. **Nexus 后端**: 根据 developer 角色执行权限判断
+6. **Nexus 后端**: 返回业务数据给前端
+
+---
+
+## 🔧 开发指南
+
+### 本地开发环境搭建
+
+```bash
+# 1. 克隆项目
+git clone <repository_url>
+cd helios-auth-service
+
+# 2. 安装依赖
+go mod download
+
+# 3. 配置环境变量
+cp .env-example .env
+# 编辑 .env 文件
+
+# 4. 启动数据库
+# 参考 DATABASE_SETUP.md
+
+# 5. 运行数据库迁移
+# 执行 migrations 目录下的 SQL 文件
+
+# 6. 启动服务
+go run cmd/server/main.go
+
+# 或使用 Air 热重载
+air
+```
+
+### 添加新 API 的步骤
+
+1. **定义数据模型** (`internal/models/`)
+2. **创建 DAO 层** (`internal/<module>/dao.go`)
+3. **创建 Service 层** (`internal/<module>/service.go`)
+4. **创建 API Handler** (`internal/router/api/v1/<module>.go`)
+5. **注册路由** (`internal/router/router.go`)
+6. **添加测试**
+7. **更新 API 文档**
+
+---
+
+## 📊 性能优化建议
+
+### 数据库优化
+
+1. **索引优化**:
+   - `users.email` (唯一索引)
+   - `users.username` (唯一索引)
+   - `project_memberships(user_id, project_id)` (复合唯一索引)
+   - `project_role_templates(project_id, role_name)` (复合唯一索引)
+
+2. **查询优化**:
+   - 使用 JOIN 减少查询次数
+   - 分页查询避免全表扫描
+   - 使用 EXPLAIN 分析慢查询
+
+### 缓存策略
+
+1. **Redis 缓存**:
+   - 缓存用户信息 (TTL: 1小时)
+   - 缓存项目角色模板 (TTL: 24小时)
+   - 缓存项目成员关系 (TTL: 30分钟)
+
+2. **缓存失效**:
+   - 用户信息变更时清除用户缓存
+   - 角色模板变更时清除项目缓存
+   - 授权关系变更时清除成员关系缓存
+
+### 并发处理
+
+- 使用数据库事务保证一致性
+- 使用乐观锁处理并发更新
+- 限流保护 API (rate limiting)
+
+---
+
+## 🧪 测试策略
+
+### 单元测试
+
+- Service 层业务逻辑测试
+- DAO 层数据库操作测试
+- 工具函数测试
+
+### 集成测试
+
+- API 端到端测试
+- 数据库集成测试
+- JWT 认证流程测试
+
+### 性能测试
+
+- 并发登录测试
+- 批量授权操作测试
+- 查询性能测试
+
+---
+
+## 📚 附录
+
+### 常见问题 FAQ
+
+**Q: 用户忘记密码怎么办?**
+A: 当前版本需要管理员重置密码,后续版本将支持邮箱验证码重置。
+
+**Q: 一个用户可以在一个项目中拥有多个角色吗?**
+A: 不可以,`project_memberships` 表有唯一约束 `(user_id, project_id)`,一个用户在一个项目中只能有一个角色。
+
+**Q: 如何撤销用户的项目权限?**
+A: 删除 `project_memberships` 表中对应的记录即可。
+
+**Q: JWT Token 过期时间是多久?**
+A: 默认 24 小时,可在配置中调整。
+
+### 术语表
+
+| 术语 | 说明 |
+|------|------|
+| **IDaaS** | Identity as a Service,身份即服务 |
+| **SSO** | Single Sign-On,单点登录 |
+| **JWT** | JSON Web Token,一种认证令牌格式 |
+| **RBAC** | Role-Based Access Control,基于角色的访问控制 |
+| **全局角色** | 用户在 Helios 系统中的角色 (super_admin, admin, user) |
+| **本地角色** | 用户在具体项目中的角色 (由项目定义) |
+| **角色模板** | 项目预定义的角色列表,用于规范化授权 |
+
+### 相关文档
+
+- [DATABASE_SETUP.md](file:///Users/yorenz/Desktop/webProjet/helios-auth-service/DATABASE_SETUP.md) - 数据库设置指南
+- [README.md](file:///Users/yorenz/Desktop/webProjet/helios-auth-service/README.md) - 项目说明
+- [PRD Helios用户中心](file:///Users/yorenz/Desktop/webProjet/helios-auth-service/PRD%20Helios%E7%94%A8%E6%88%B7%E4%B8%AD%E5%BF%83%202f1da14d62ec80758089dd6dcba9fcf2.md) - 产品需求文档
+
+---
+
+## 📞 联系方式
+
+如有问题或建议,请联系开发团队。
+
+---
+
+**文档结束**
