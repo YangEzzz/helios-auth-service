@@ -15,4 +15,10 @@ var (
 	ErrEmailAlreadyExists = errors.New("email already exists")
 	// ErrUnauthorized 未授权
 	ErrUnauthorized = errors.New("unauthorized")
+	// ErrUserPendingApproval 待审核
+	ErrUserPendingApproval = errors.New("账户正在审核中，请联系管理员")
+	// ErrUserLocked 账户已锁定
+	ErrUserLocked = errors.New("账户已锁定")
+	// ErrUserRejected 账户已停用
+	ErrUserRejected = errors.New("账户已被停用或拒绝")
 )

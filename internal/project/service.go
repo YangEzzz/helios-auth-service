@@ -3,6 +3,7 @@ package project
 import (
 	"context"
 	"errors"
+	"strings"
 	"helios-auth-service/internal/audit"
 	"helios-auth-service/internal/constant"
 	"helios-auth-service/internal/models"
@@ -11,11 +12,17 @@ import (
 )
 
 type Service interface {
-	CreateProject(ctx context.Context, projectName, projectIdString, description string, roleDocumentation []string) (*models.Project, error)
+	CreateProject(ctx context.Context, opID, projectName, projectIdString, description string, roleDocumentation []string) (*models.Project, error)
 	GetProjectByID(ctx context.Context, id string) (*models.Project, error)
-	DeleteProject(ctx context.Context, id string) error
-	AddRoleTemplate(ctx context.Context, projectID, roleName, description string) error
+	DeleteProject(ctx context.Context, opID, id string) error
+	AddRoleTemplate(ctx context.Context, opID, projectID, roleName, description string) error
+	ListRoleTemplates(ctx context.Context, projectID string) ([]models.ProjectRoleTemplate, error)
+	RemoveProjectMember(ctx context.Context, opID, projectID, userID string) error
+	UpdateProjectMemberRole(ctx context.Context, opID, projectID, userID, role string) error
+	ListProjectMembers(ctx context.Context, projectID string) ([]models.ProjectMembership, error)
+	AddProjectMember(ctx context.Context, opID, projectID, userID, role string) error
 	VerifyUserProjectRole(ctx context.Context, userID uuid.UUID, projectIDString string) (string, error)
+	ListProjects(ctx context.Context) ([]models.Project, error)
 }
 
 type service struct {
@@ -27,44 +34,104 @@ func NewService(dao Dao, auditService audit.Service) Service {
 	return &service{dao: dao, auditService: auditService}
 }
 
-func (s *service) CreateProject(ctx context.Context, projectName, projectIdString, description string, roleDocumentation []string) (*models.Project, error) {
+func (s *service) CreateProject(ctx context.Context, opID, projectName, projectIdString, description string, roleDocumentation []string) (*models.Project, error) {
 	project := models.NewProject(projectName, projectIdString, description, roleDocumentation)
 	if err := s.dao.CreateProject(project); err != nil {
 		return nil, err
 	}
-
-	// Audit Log
-	// Note: UserID is currently not passed to CreateProject, we might need to change signature or get it from context if middleware puts it there.
-	// For now, passing nil for UserID as system action or we can extract from context if available.
-	// Assuming context has "userID" if middleware sets it, but ctx is standard context.
-	// Let's check if we can get userID from context.
-	// The caller (Router) usually passes gin.Context.Request.Context().
-	// Gin context keys are not automatically in Request.Context().
-	// We need to fix this later or assume nil for now.
-	// To keep it simple and safe:
-	// Use extractUserIDFromContext(ctx) helper if we had one.
-	// For now, let's use nil for UserID in this step, or simple placeholder.
-	// User requested "Audit Logging Logic", I will try to extract user ID from context if I can, but standard context doesn't have it unless we put it there.
-	// I'll leave UserID as nil for now and just log the resource.
-	_ = s.auditService.LogAction(ctx, nil, "create_project", "project:"+project.ID.String(), "Created project "+project.ProjectName, "")
-
+	
+	opUUID, _ := uuid.Parse(opID)
+	_ = s.auditService.LogAction(ctx, &opUUID, "create_project", "project:"+project.ID.String(), "Created project "+project.ProjectName, "")
 	return project, nil
 }
 
-func (s *service) AddRoleTemplate(ctx context.Context, projectID, roleName, description string) error {
+func (s *service) AddRoleTemplate(ctx context.Context, opID, projectID, roleName, description string) error {
 	pID, err := uuid.Parse(projectID)
 	if err != nil {
 		return err
 	}
 	template := models.NewProjectRoleTemplate(pID, roleName, description)
-	return s.dao.AddRoleTemplate(template)
+	if err := s.dao.AddRoleTemplate(template); err != nil {
+		return err
+	}
+	opUUID, _ := uuid.Parse(opID)
+	_ = s.auditService.LogAction(ctx, &opUUID, "add_role_template", "project:"+projectID, "Added role template "+roleName, "")
+	return nil
 }
 
-func (s *service) DeleteProject(ctx context.Context, id string) error {
+func (s *service) ListRoleTemplates(ctx context.Context, projectID string) ([]models.ProjectRoleTemplate, error) {
+	return s.dao.ListRoleTemplates(projectID)
+}
+
+func (s *service) RemoveProjectMember(ctx context.Context, opID, projectID, userID string) error {
+	pID, err := uuid.Parse(projectID)
+	if err != nil {
+		return err
+	}
+	uID, err := uuid.Parse(userID)
+	if err != nil {
+		return err
+	}
+
+	if err := s.dao.RemoveProjectMember(uID, pID); err != nil {
+		return err
+	}
+	opUUID, _ := uuid.Parse(opID)
+	_ = s.auditService.LogAction(ctx, &opUUID, "remove_member", "project:"+projectID, "Removed member "+userID, "")
+	return nil
+}
+
+func (s *service) UpdateProjectMemberRole(ctx context.Context, opID, projectID, userID, role string) error {
+	pID, err := uuid.Parse(projectID)
+	if err != nil {
+		return err
+	}
+	uID, err := uuid.Parse(userID)
+	if err != nil {
+		return err
+	}
+
+	if err := s.dao.UpdateProjectMemberRole(uID, pID, role); err != nil {
+		return err
+	}
+	opUUID, _ := uuid.Parse(opID)
+	_ = s.auditService.LogAction(ctx, &opUUID, "update_member_role", "project:"+projectID, "Updated member "+userID+" role to "+role, "")
+	return nil
+}
+
+func (s *service) ListProjectMembers(ctx context.Context, projectID string) ([]models.ProjectMembership, error) {
+	return s.dao.ListProjectMembers(projectID)
+}
+
+func (s *service) AddProjectMember(ctx context.Context, opID, projectID, userID, role string) error {
+	pID, err := uuid.Parse(projectID)
+	if err != nil {
+		return err
+	}
+	uID, err := uuid.Parse(userID)
+	if err != nil {
+		return err
+	}
+
+	membership := models.NewProjectMembership(uID, pID, role)
+	if err := s.dao.AddProjectMember(membership); err != nil {
+		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "1062") {
+			return errors.New("该用户已经是本项目成员，无需重复授权")
+		}
+		return err
+	}
+
+	opUUID, _ := uuid.Parse(opID)
+	_ = s.auditService.LogAction(ctx, &opUUID, "add_member", "project:"+projectID, "Added member "+userID+" as "+role, "")
+	return nil
+}
+
+func (s *service) DeleteProject(ctx context.Context, opID, id string) error {
 	if err := s.dao.DeleteProject(id); err != nil {
 		return err
 	}
-	_ = s.auditService.LogAction(ctx, nil, "delete_project", "project:"+id, "Deleted project", "")
+	opUUID, _ := uuid.Parse(opID)
+	_ = s.auditService.LogAction(ctx, &opUUID, "delete_project", "project:"+id, "Deleted project", "")
 	return nil
 }
 
@@ -80,7 +147,6 @@ func (s *service) GetProjectByID(ctx context.Context, id string) (*models.Projec
 }
 
 func (s *service) VerifyUserProjectRole(ctx context.Context, userID uuid.UUID, projectIDString string) (string, error) {
-	// 1. Find project by string ID
 	project, err := s.dao.GetProjectByProjectIDString(projectIDString)
 	if err != nil {
 		if errors.Is(err, constant.ErrProjectNotFound) {
@@ -88,17 +154,16 @@ func (s *service) VerifyUserProjectRole(ctx context.Context, userID uuid.UUID, p
 		}
 		return "", err
 	}
-
-	// 2. Find membership
 	membership, err := s.dao.GetProjectMembership(userID, project.ID)
 	if err != nil {
 		if errors.Is(err, constant.ErrRecordNotFound) {
-			// 如果没有会员记录，视为空角色，或者返回特定错误
-			// 这里根据业务需求，如果没有找到记录，说明不是成员，role为空字符串
 			return "", nil
 		}
 		return "", err
 	}
-
 	return membership.RoleInProject, nil
+}
+
+func (s *service) ListProjects(ctx context.Context) ([]models.Project, error) {
+	return s.dao.ListProjects()
 }

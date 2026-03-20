@@ -50,9 +50,11 @@ func InitAuthRouter(r *gin.RouterGroup, db *gorm.DB, jwtSecret string) {
 }
 
 type RegisterRequest struct {
-	Name     string `json:"name" binding:"required"`
-	Email    string `json:"email" binding:"required,email"`
-	Password string `json:"password" binding:"required,min=6"`
+	Name       string `json:"name" binding:"required"`
+	Email      string `json:"email" binding:"required,email"`
+	Password   string `json:"password" binding:"required,min=6"`
+	Department string `json:"department"`
+	Reason     string `json:"reason"`
 }
 
 type LoginRequest struct {
@@ -66,14 +68,21 @@ func (r *AuthRouter) Login(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": utils.GetValidationError(err), "code": constant.ErrorCode})
 		return
 	}
-	token, err := r.authService.Login(c.Request.Context(), req.Email, req.Password)
+	user, token, err := r.authService.Login(c.Request.Context(), req.Email, req.Password)
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": utils.GetValidationError(err), "code": constant.ErrorCode})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"message": "Login successful", "data": token, "code": constant.SuccessCode})
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Login successful",
+		"data": gin.H{
+			"token": token,
+			"user":  user,
+		},
+		"code": constant.SuccessCode,
+	})
 }
 
 func (r *AuthRouter) Register(c *gin.Context) {
@@ -84,10 +93,10 @@ func (r *AuthRouter) Register(c *gin.Context) {
 		return
 	}
 
-	user, err := r.authService.Register(c.Request.Context(), req.Email, req.Name, req.Password)
+	user, err := r.authService.Register(c.Request.Context(), req.Email, req.Name, req.Password, req.Department, req.Reason)
 
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{"message": utils.GetValidationError(err), "code": constant.ErrorCode})
+		c.JSON(http.StatusOK, gin.H{"error": utils.GetValidationError(err), "code": constant.ErrorCode, "message": utils.GetValidationError(err)})
 		return
 	}
 

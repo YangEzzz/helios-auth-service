@@ -54,6 +54,13 @@ func GetValidationError(err error) string {
 		return "该邮箱已被注册"
 	}
 
+	// 5. 处理账户审核状态错误
+	if errors.Is(err, constant.ErrUserPendingApproval) ||
+		errors.Is(err, constant.ErrUserLocked) ||
+		errors.Is(err, constant.ErrUserRejected) {
+		return err.Error() // 直接返回我们在 constant 里定义的中文报错
+	}
+
 	return "请求参数格式错误"
 }
 

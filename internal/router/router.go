@@ -5,7 +5,9 @@ import (
 	"helios-auth-service/internal/database"
 	"helios-auth-service/internal/router/api"
 	v1 "helios-auth-service/internal/router/api/v1"
+	"helios-auth-service/internal/models"
 	"log"
+	"os"
 
 	"helios-auth-service/internal/config"
 
@@ -37,9 +39,29 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 	}
 
 	log.Println("Successfully connected to PostgreSQL database with GORM")
+	
+	// 2. 自动迁移数据库结构（如果表不存在则新建）
+	log.Println("Initializing database tables...")
+	err = db.AutoMigrate(
+		&models.User{},
+		&models.Project{},
+		&models.ProjectMembership{},
+		&models.ProjectRoleTemplate{},
+		&models.AuditLog{},
+	)
+	if err != nil {
+		log.Fatalf("Failed to auto-migrate database: %v", err)
+	}
+	log.Println("Database migration completed")
 
 	// 5. 创建 Gin 引擎
 	r := gin.Default()
+
+	// 确保上传目录存在
+	_ = os.MkdirAll("./uploads/avatars", os.ModePerm)
+
+	// 提供静态文件访问
+	r.Static("/uploads", "./uploads")
 
 	// CORS设置 (示例)
 	r.Use(func(c *gin.Context) {
@@ -63,6 +85,7 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 	{
 		v1.InitUserRouter(v1Group, db, cfg.JWTSecret)
 		v1.InitProjectRouter(v1Group, db, cfg.JWTSecret)
+		v1Group.POST("/upload/avatar", v1.UploadAvatar)
 	}
 
 	return r

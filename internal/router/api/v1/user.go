@@ -34,20 +34,45 @@ func InitUserRouter(r *gin.RouterGroup, db *gorm.DB, jwtSecret string) {
 	userGroup := r.Group("")
 	userGroup.Use(middleware.AuthMiddleware(jwtSecret))
 	{
+		userGroup.GET("/me", userRouter.GetCurrentUser)
 		userGroup.GET("/users", userRouter.GetUserByID)
 		userGroup.GET("/users/count", userRouter.GetUserCount)
 		userGroup.GET("/users/list", userRouter.GetAllUsers)
 		userGroup.POST("/approve_user", userRouter.ApproveUser)
 		userGroup.POST("/reject_user", userRouter.RejectUser)
 		userGroup.POST("/set_user_role", userRouter.SetUserRole)
+		userGroup.POST("/avatar", userRouter.UpdateAvatar)
 	}
+}
+
+func (r *UserRouter) GetCurrentUser(c *gin.Context) {
+	// 1. 从中间件存入的 context 中获取当前用户 ID
+	id, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(401, gin.H{"error": "Unauthorized", "code": constant.ErrorCode})
+		return
+	}
+
+	// 2. 根据 ID 查询用户信息
+	user, err := r.userService.GetUserByID(c.Request.Context(), id.(string))
+	if err != nil {
+		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
+		return
+	}
+
+	// 3. 返回用户信息数据（注意这里要包在 data 字段里，保持前端统一性）
+	c.JSON(200, gin.H{
+		"message": "获取成功",
+		"data":    user,
+		"code":    constant.SuccessCode,
+	})
 }
 
 func (r *UserRouter) GetUserByID(c *gin.Context) {
 	id := c.Query("id")
 	user, err := r.userService.GetUserByID(c.Request.Context(), id)
 	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error(), "code": constant.ErrorCode})
+		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
 		return
 	}
 	c.JSON(200, gin.H{"user": user, "code": constant.SuccessCode})
@@ -58,7 +83,7 @@ func (r *UserRouter) GetUserCount(c *gin.Context) {
 	// 获取总用户数
 	totalCount, err := r.userService.GetTotalUserCount(c.Request.Context())
 	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error(), "code": constant.ErrorCode})
+		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
 		return
 	}
 
@@ -96,7 +121,7 @@ func (r *UserRouter) GetAllUsers(c *gin.Context) {
 	// 获取用户列表
 	users, total, err := r.userService.GetAllUsers(c.Request.Context(), page, pageSize)
 	if err != nil {
-		c.JSON(500, gin.H{"error": err.Error(), "code": constant.ErrorCode})
+		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
 		return
 	}
 
@@ -124,7 +149,7 @@ func (r *UserRouter) ApproveUser(c *gin.Context) {
 		return
 	}
 	if err := r.userService.ApproveUser(c.Request.Context(), req.ID); err != nil {
-		c.JSON(500, gin.H{"error": err.Error(), "code": constant.ErrorCode})
+		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
 		return
 	}
 	c.JSON(200, gin.H{"message": "User approved successfully", "code": constant.SuccessCode})
@@ -137,7 +162,7 @@ func (r *UserRouter) RejectUser(c *gin.Context) {
 		return
 	}
 	if err := r.userService.RejectUser(c.Request.Context(), req.ID); err != nil {
-		c.JSON(500, gin.H{"error": err.Error(), "code": constant.ErrorCode})
+		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
 		return
 	}
 	c.JSON(200, gin.H{"message": "User rejected successfully", "code": constant.SuccessCode})
@@ -168,9 +193,42 @@ func (r *UserRouter) SetUserRole(c *gin.Context) {
 			c.JSON(403, gin.H{"error": "权限不足", "code": constant.ErrorCode})
 			return
 		}
-		c.JSON(500, gin.H{"error": err.Error(), "code": constant.ErrorCode})
+		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
 		return
 	}
 
 	c.JSON(200, gin.H{"message": "User role updated successfully", "code": constant.SuccessCode})
+}
+
+type UpdateAvatarRequest struct {
+	Avatar string `json:"avatar" binding:"required"`
+}
+
+func (r *UserRouter) UpdateAvatar(c *gin.Context) {
+	var req UpdateAvatarRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"message": err.Error(), "code": constant.ErrorCode})
+		return
+	}
+
+	// 1. 获取当前登录用户 ID
+	id, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(401, gin.H{"message": "Unauthorized", "code": constant.ErrorCode})
+		return
+	}
+
+	// 2. 更新头像
+	if err := r.userService.UpdateAvatar(c.Request.Context(), id.(string), req.Avatar); err != nil {
+		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"message": "头像更新成功",
+		"code":    constant.SuccessCode,
+		"data": gin.H{
+			"avatar": req.Avatar,
+		},
+	})
 }

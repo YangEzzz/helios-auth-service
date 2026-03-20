@@ -29,6 +29,8 @@ type Dao interface {
 	GetAllUsers(offset, limit int) ([]*models.User, error)
 	// UpdateUserRole 更新用户角色
 	UpdateUserRole(id string, role constant.UserRole) error
+	// UpdateAvatar 更新用户头像
+	UpdateAvatar(id string, avatar string) error
 }
 
 func NewDao(db *gorm.DB) Dao {
@@ -93,6 +95,16 @@ func (u *userDao) GetAllUsers(offset, limit int) ([]*models.User, error) {
 
 func (u *userDao) UpdateUserRole(id string, role constant.UserRole) error {
 	result := u.db.Model(&models.User{}).Where("id = ?", id).Update("role", role)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return constant.ErrUserNotFound
+	}
+	return nil
+}
+func (u *userDao) UpdateAvatar(id string, avatar string) error {
+	result := u.db.Model(&models.User{}).Where("id = ?", id).Update("avatar", avatar)
 	if result.Error != nil {
 		return result.Error
 	}

@@ -18,6 +18,7 @@ type Service interface {
 	GetAllUsers(ctx context.Context, page, pageSize int) ([]*models.User, int64, error)
 	// SetUserRole 设置用户角色 (仅管理员)
 	SetUserRole(ctx context.Context, operatorID, targetUserID string, newRole constant.UserRole) error
+	UpdateAvatar(ctx context.Context, userID, avatarURL string) error
 }
 
 type service struct {
@@ -114,5 +115,14 @@ func (s *service) SetUserRole(ctx context.Context, operatorID, targetUserID stri
 	// 4. 记录审计日志
 	_ = s.auditService.LogAction(ctx, nil, "set_user_role", "user:"+targetUserID, "Set role to "+string(newRole)+" by "+operator.Username, "")
 
+	return nil
+}
+
+func (s *service) UpdateAvatar(ctx context.Context, userID, avatarURL string) error {
+	if err := s.dao.UpdateAvatar(userID, avatarURL); err != nil {
+		return err
+	}
+	// 记录审计日志
+	_ = s.auditService.LogAction(ctx, nil, "update_avatar", "user:"+userID, "Updated profile avatar", "")
 	return nil
 }

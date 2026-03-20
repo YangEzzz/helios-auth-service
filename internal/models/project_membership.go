@@ -7,7 +7,7 @@ import (
 )
 
 type ProjectMembership struct {
-	ID            uuid.UUID `json:"id" gorm:"type:uuid;primaryKey;default:uuid_generate_v4()"`
+	ID            uuid.UUID `json:"id" gorm:"type:uuid;primaryKey"`
 	UserID        uuid.UUID `json:"user_id" gorm:"type:uuid;not null;index;uniqueIndex:idx_user_project"`
 	ProjectID     uuid.UUID `json:"project_id" gorm:"type:uuid;not null;index;uniqueIndex:idx_user_project"`
 	RoleInProject string    `json:"role_in_project" gorm:"type:varchar(50);not null"`

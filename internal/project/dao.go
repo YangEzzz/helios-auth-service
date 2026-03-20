@@ -18,8 +18,14 @@ type Dao interface {
 	GetProjectByID(id string) (*models.Project, error)
 	DeleteProject(id string) error
 	AddRoleTemplate(template *models.ProjectRoleTemplate) error
+	ListRoleTemplates(projectID string) ([]models.ProjectRoleTemplate, error)
 	GetProjectByProjectIDString(projectIDString string) (*models.Project, error)
 	GetProjectMembership(userID, projectID uuid.UUID) (*models.ProjectMembership, error)
+	RemoveProjectMember(userID, projectID uuid.UUID) error
+	UpdateProjectMemberRole(userID, projectID uuid.UUID, role string) error
+	ListProjectMembers(projectID string) ([]models.ProjectMembership, error)
+	AddProjectMember(membership *models.ProjectMembership) error
+	ListProjects() ([]models.Project, error)
 }
 
 func NewDao(db *gorm.DB) Dao {
@@ -54,8 +60,32 @@ func (p *projectDao) GetProjectMembership(userID, projectID uuid.UUID) (*models.
 	return &membership, nil
 }
 
+func (p *projectDao) RemoveProjectMember(userID, projectID uuid.UUID) error {
+	return p.db.Where("user_id = ? AND project_id = ?", userID, projectID).Delete(&models.ProjectMembership{}).Error
+}
+
+func (p *projectDao) UpdateProjectMemberRole(userID, projectID uuid.UUID, role string) error {
+	return p.db.Model(&models.ProjectMembership{}).Where("user_id = ? AND project_id = ?", userID, projectID).Update("role_in_project", role).Error
+}
+
+func (p *projectDao) ListProjectMembers(projectID string) ([]models.ProjectMembership, error) {
+	var members []models.ProjectMembership
+	err := p.db.Preload("User").Where("project_id = ?", projectID).Find(&members).Error
+	return members, err
+}
+
+func (p *projectDao) AddProjectMember(membership *models.ProjectMembership) error {
+	return p.db.Create(membership).Error
+}
+
 func (p *projectDao) AddRoleTemplate(template *models.ProjectRoleTemplate) error {
 	return p.db.Create(template).Error
+}
+
+func (p *projectDao) ListRoleTemplates(projectID string) ([]models.ProjectRoleTemplate, error) {
+	var templates []models.ProjectRoleTemplate
+	err := p.db.Where("project_id = ?", projectID).Find(&templates).Error
+	return templates, err
 }
 
 func (p *projectDao) DeleteProject(id string) error {
@@ -72,4 +102,9 @@ func (p *projectDao) GetProjectByID(id string) (*models.Project, error) {
 		return nil, err
 	}
 	return &project, nil
+}
+func (p *projectDao) ListProjects() ([]models.Project, error) {
+	var projects []models.Project
+	err := p.db.Find(&projects).Error
+	return projects, err
 }
