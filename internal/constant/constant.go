@@ -27,6 +27,7 @@ const (
 )
 
 const (
-	SuccessCode = 200
-	ErrorCode   = 500
+	SuccessCode          = 200
+	ErrorCode            = 500
+	NotProjectMemberCode = 40301
 )

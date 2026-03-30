@@ -26,6 +26,7 @@ type Dao interface {
 	ListProjectMembers(projectID string) ([]models.ProjectMembership, error)
 	AddProjectMember(membership *models.ProjectMembership) error
 	ListProjects() ([]models.Project, error)
+	ListProjectsForUser(userID uuid.UUID) ([]models.ProjectMembership, error)
 }
 
 func NewDao(db *gorm.DB) Dao {
@@ -107,4 +108,10 @@ func (p *projectDao) ListProjects() ([]models.Project, error) {
 	var projects []models.Project
 	err := p.db.Find(&projects).Error
 	return projects, err
+}
+
+func (p *projectDao) ListProjectsForUser(userID uuid.UUID) ([]models.ProjectMembership, error) {
+	var memberships []models.ProjectMembership
+	err := p.db.Preload("Project").Where("user_id = ?", userID).Order("created_at desc").Find(&memberships).Error
+	return memberships, err
 }

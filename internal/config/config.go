@@ -17,6 +17,7 @@ type Config struct {
 	DatabasePassword string
 	DatabaseName     string
 	DatabaseSSLMode  string
+	DBAutoMigrate    bool
 }
 
 func LoadConfig() *Config {
@@ -34,6 +35,7 @@ func LoadConfig() *Config {
 		DatabasePassword: getEnv("DB_PASSWORD", ""),
 		DatabaseName:     getEnv("DB_NAME", "system_db"),
 		DatabaseSSLMode:  getEnv("DB_SSLMODE", "disable"),
+		DBAutoMigrate:    getEnv("DB_AUTO_MIGRATE", "true") == "true",
 	}
 
 	if cfg.JWTSecret == "" {

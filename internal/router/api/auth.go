@@ -18,13 +18,15 @@ import (
 type AuthRouter struct {
 	authService    auth.Service
 	projectService project.Service
+	auditService   audit.Service
 }
 
 // NewAuthRouter 创建 AuthRouter 实例
-func NewAuthRouter(authService auth.Service, projectService project.Service) *AuthRouter {
+func NewAuthRouter(authService auth.Service, projectService project.Service, auditService audit.Service) *AuthRouter {
 	return &AuthRouter{
 		authService:    authService,
 		projectService: projectService,
+		auditService:   auditService,
 	}
 }
 
@@ -38,9 +40,10 @@ func InitAuthRouter(r *gin.RouterGroup, db *gorm.DB, jwtSecret string) {
 	projectDao := project.NewDao(db)
 	projectService := project.NewService(projectDao, auditService)
 
-	authRouter := NewAuthRouter(authService, projectService)
+	authRouter := NewAuthRouter(authService, projectService, auditService)
 
 	r.POST("/login", authRouter.Login)
+	r.POST("/external/login", authRouter.ExternalLogin)
 	r.POST("/register", authRouter.Register)
 	r.GET("/roles", GetRoleList)
 	r.GET("/status", GetStatusList)
@@ -62,6 +65,12 @@ type LoginRequest struct {
 	Password string `json:"password" binding:"required,min=6"`
 }
 
+type ExternalLoginRequest struct {
+	Username        string `json:"username" binding:"required"`
+	Password        string `json:"password" binding:"required,min=6"`
+	ProjectIDString string `json:"project_id_string" binding:"required"`
+}
+
 func (r *AuthRouter) Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -75,11 +84,59 @@ func (r *AuthRouter) Login(c *gin.Context) {
 		return
 	}
 
+	// 记录审计日志
+	_ = r.auditService.LogAction(c.Request.Context(), &user.ID, constant.ActionUserLogin, "user:"+user.ID.String(), "User logged in", c.ClientIP())
+
 	c.JSON(http.StatusOK, gin.H{
 		"message": "Login successful",
 		"data": gin.H{
 			"token": token,
 			"user":  user,
+		},
+		"code": constant.SuccessCode,
+	})
+}
+
+func (r *AuthRouter) ExternalLogin(c *gin.Context) {
+	var req ExternalLoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": utils.GetValidationError(err), "code": constant.ErrorCode})
+		return
+	}
+	
+	// 这里将 username 作为 email 传入 Login 方法
+	user, token, err := r.authService.Login(c.Request.Context(), req.Username, req.Password)
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": utils.GetValidationError(err), "code": constant.ErrorCode})
+		return
+	}
+
+	// 验证用户是否在传入的项目中
+	role, err := r.projectService.VerifyUserProjectRole(c.Request.Context(), user.ID, req.ProjectIDString)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error(), "code": constant.ErrorCode})
+		return
+	}
+
+	// 如果没有分配角色，则说明不是该项目成员
+	if role == "" {
+		c.JSON(http.StatusForbidden, gin.H{
+			"error": "非该项目成员",
+			"code":  constant.NotProjectMemberCode,
+		})
+		return
+	}
+
+	// 记录审计日志
+	_ = r.auditService.LogAction(c.Request.Context(), &user.ID, constant.ActionUserExternalLogin, "project:"+req.ProjectIDString, "External login to project "+req.ProjectIDString, c.ClientIP())
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Login successful",
+		"data": gin.H{
+			"token":           token,
+			"user":            user,
+			"role_in_project": role,
 		},
 		"code": constant.SuccessCode,
 	})
@@ -99,6 +156,9 @@ func (r *AuthRouter) Register(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"error": utils.GetValidationError(err), "code": constant.ErrorCode, "message": utils.GetValidationError(err)})
 		return
 	}
+
+	// 记录审计日志
+	_ = r.auditService.LogAction(c.Request.Context(), &user.ID, "user_register", "user:"+user.ID.String(), "User registered, pending approval", c.ClientIP())
 
 	c.JSON(http.StatusOK, gin.H{"message": "申请账号成功，等待管理员审核", "user": user, "code": constant.SuccessCode})
 }

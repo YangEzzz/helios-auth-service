@@ -1,6 +1,8 @@
 package v1
 
 import (
+	"strconv"
+
 	"helios-auth-service/internal/audit"
 	"helios-auth-service/internal/constant"
 	"helios-auth-service/internal/middleware"
@@ -34,6 +36,7 @@ func InitProjectRouter(r *gin.RouterGroup, db *gorm.DB, jwtSecret string) {
 	projectGroup.Use(middleware.AuthMiddleware(jwtSecret))
 	{
 		projectGroup.GET("/projects", projectRouter.ListProjects)
+		projectGroup.GET("/my-projects", projectRouter.ListMyProjects)
 		projectGroup.GET("/project", projectRouter.GetProjectByID)
 		projectGroup.GET("/project/role_templates", projectRouter.ListRoleTemplates)
 		projectGroup.GET("/project/members", projectRouter.ListProjectMembers)
@@ -59,6 +62,28 @@ func (r *ProjectRouter) ListProjects(c *gin.Context) {
 	c.JSON(200, gin.H{"projects": projects, "code": constant.SuccessCode})
 }
 
+func (r *ProjectRouter) ListMyProjects(c *gin.Context) {
+	userID, exists := c.Get("user_id")
+	if !exists {
+		c.JSON(401, gin.H{"message": "Unauthorized", "code": constant.ErrorCode})
+		return
+	}
+
+	projects, err := r.projectService.ListMyProjects(c.Request.Context(), userID.(string))
+	if err != nil {
+		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
+		return
+	}
+
+	c.JSON(200, gin.H{
+		"message": "获取成功",
+		"data": gin.H{
+			"projects": projects,
+		},
+		"code": constant.SuccessCode,
+	})
+}
+
 func (r *ProjectRouter) GetProjectByID(c *gin.Context) {
 	id := c.Query("id")
 	projects, err := r.projectService.GetProjectByID(c.Request.Context(), id)
@@ -82,12 +107,31 @@ func (r *ProjectRouter) ListRoleTemplates(c *gin.Context) {
 func (r *ProjectRouter) ListAuditLogs(c *gin.Context) {
 	projectId := c.Query("id")
 	resource := "project:" + projectId
-	logs, err := r.auditService.ListAuditLogs(c.Request.Context(), resource)
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if pageSize < 1 || pageSize > 100 {
+		pageSize = 10
+	}
+
+	logs, total, err := r.auditService.ListAuditLogs(c.Request.Context(), resource, page, pageSize)
 	if err != nil {
 		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
 		return
 	}
-	c.JSON(200, gin.H{"audit_logs": logs, "code": constant.SuccessCode})
+	c.JSON(200, gin.H{
+		"message": "获取成功",
+		"data": gin.H{
+			"logs":      logs,
+			"total":     total,
+			"page":      page,
+			"page_size": pageSize,
+		},
+		"code": constant.SuccessCode,
+	})
 }
 
 // ---------------- 成员管理处理函数 ----------------

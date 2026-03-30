@@ -15,6 +15,11 @@ type AuditLog struct {
 	IPAddress string     `json:"ip_address" gorm:"type:varchar(45)"`
 	CreatedAt time.Time  `json:"created_at" gorm:"autoCreateTime;index"`
 
+	// Virtual fields for translated names
+	ActionName   string `json:"action_name" gorm:"-"`
+	ResourceName string `json:"resource_name" gorm:"-"`
+	DetailsName  string `json:"details_name" gorm:"-"`
+
 	// Associations
 	User *User `json:"user,omitempty" gorm:"foreignKey:UserID"`
 }

@@ -3,10 +3,10 @@ package project
 import (
 	"context"
 	"errors"
-	"strings"
 	"helios-auth-service/internal/audit"
 	"helios-auth-service/internal/constant"
 	"helios-auth-service/internal/models"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -23,6 +23,7 @@ type Service interface {
 	AddProjectMember(ctx context.Context, opID, projectID, userID, role string) error
 	VerifyUserProjectRole(ctx context.Context, userID uuid.UUID, projectIDString string) (string, error)
 	ListProjects(ctx context.Context) ([]models.Project, error)
+	ListMyProjects(ctx context.Context, userID string) ([]models.ProjectMembership, error)
 }
 
 type service struct {
@@ -39,7 +40,7 @@ func (s *service) CreateProject(ctx context.Context, opID, projectName, projectI
 	if err := s.dao.CreateProject(project); err != nil {
 		return nil, err
 	}
-	
+
 	opUUID, _ := uuid.Parse(opID)
 	_ = s.auditService.LogAction(ctx, &opUUID, "create_project", "project:"+project.ID.String(), "Created project "+project.ProjectName, "")
 	return project, nil
@@ -166,4 +167,13 @@ func (s *service) VerifyUserProjectRole(ctx context.Context, userID uuid.UUID, p
 
 func (s *service) ListProjects(ctx context.Context) ([]models.Project, error) {
 	return s.dao.ListProjects()
+}
+
+func (s *service) ListMyProjects(ctx context.Context, userID string) ([]models.ProjectMembership, error) {
+	uID, err := uuid.Parse(userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return s.dao.ListProjectsForUser(uID)
 }

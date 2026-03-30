@@ -3,9 +3,9 @@ package router
 import (
 	"fmt"
 	"helios-auth-service/internal/database"
+	"helios-auth-service/internal/models"
 	"helios-auth-service/internal/router/api"
 	v1 "helios-auth-service/internal/router/api/v1"
-	"helios-auth-service/internal/models"
 	"log"
 	"os"
 
@@ -39,20 +39,24 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 	}
 
 	log.Println("Successfully connected to PostgreSQL database with GORM")
-	
+
 	// 2. 自动迁移数据库结构（如果表不存在则新建）
-	log.Println("Initializing database tables...")
-	err = db.AutoMigrate(
-		&models.User{},
-		&models.Project{},
-		&models.ProjectMembership{},
-		&models.ProjectRoleTemplate{},
-		&models.AuditLog{},
-	)
-	if err != nil {
-		log.Fatalf("Failed to auto-migrate database: %v", err)
+	if cfg.DBAutoMigrate {
+		log.Println("Initializing database tables...")
+		err = db.AutoMigrate(
+			&models.User{},
+			&models.Project{},
+			&models.ProjectMembership{},
+			&models.ProjectRoleTemplate{},
+			&models.AuditLog{},
+		)
+		if err != nil {
+			log.Fatalf("Failed to auto-migrate database: %v", err)
+		}
+		log.Println("Database migration completed")
+	} else {
+		log.Println("Skipping automatic database migration (DB_AUTO_MIGRATE != true)")
 	}
-	log.Println("Database migration completed")
 
 	// 5. 创建 Gin 引擎
 	r := gin.Default()
@@ -85,6 +89,8 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 	{
 		v1.InitUserRouter(v1Group, db, cfg.JWTSecret)
 		v1.InitProjectRouter(v1Group, db, cfg.JWTSecret)
+		v1.InitAuditRouter(v1Group, db, cfg.JWTSecret)
+		v1.InitDashboardRouter(v1Group, db, cfg.JWTSecret)
 		v1Group.POST("/upload/avatar", v1.UploadAvatar)
 	}
 
