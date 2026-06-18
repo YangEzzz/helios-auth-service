@@ -15,10 +15,12 @@ type projectDao struct {
 
 type Dao interface {
 	CreateProject(project *models.Project) error
+	UpdateProject(id uuid.UUID, projectName, projectURL, description string) (*models.Project, error)
 	GetProjectByID(id string) (*models.Project, error)
 	DeleteProject(id string) error
 	AddRoleTemplate(template *models.ProjectRoleTemplate) error
 	ListRoleTemplates(projectID string) ([]models.ProjectRoleTemplate, error)
+	RoleTemplateExists(projectID uuid.UUID, roleName string) (bool, error)
 	GetProjectByProjectIDString(projectIDString string) (*models.Project, error)
 	GetProjectMembership(userID, projectID uuid.UUID) (*models.ProjectMembership, error)
 	RemoveProjectMember(userID, projectID uuid.UUID) error
@@ -35,6 +37,24 @@ func NewDao(db *gorm.DB) Dao {
 
 func (p *projectDao) CreateProject(project *models.Project) error {
 	return p.db.Create(project).Error
+}
+
+func (p *projectDao) UpdateProject(id uuid.UUID, projectName, projectURL, description string) (*models.Project, error) {
+	var project models.Project
+	if err := p.db.Where("id = ?", id).First(&project).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, constant.ErrProjectNotFound
+		}
+		return nil, err
+	}
+
+	project.ProjectName = projectName
+	project.ProjectURL = projectURL
+	project.Description = description
+	if err := p.db.Save(&project).Error; err != nil {
+		return nil, err
+	}
+	return &project, nil
 }
 
 func (p *projectDao) GetProjectByProjectIDString(projectIDString string) (*models.Project, error) {
@@ -87,6 +107,14 @@ func (p *projectDao) ListRoleTemplates(projectID string) ([]models.ProjectRoleTe
 	var templates []models.ProjectRoleTemplate
 	err := p.db.Where("project_id = ?", projectID).Find(&templates).Error
 	return templates, err
+}
+
+func (p *projectDao) RoleTemplateExists(projectID uuid.UUID, roleName string) (bool, error) {
+	var count int64
+	err := p.db.Model(&models.ProjectRoleTemplate{}).
+		Where("project_id = ? AND role_name = ?", projectID, roleName).
+		Count(&count).Error
+	return count > 0, err
 }
 
 func (p *projectDao) DeleteProject(id string) error {

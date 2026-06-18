@@ -13,7 +13,6 @@ import (
 	"gorm.io/gorm"
 )
 
-
 type AuditRouter struct {
 	auditService audit.Service
 	db           *gorm.DB
@@ -32,20 +31,21 @@ func InitAuditRouter(r *gin.RouterGroup, db *gorm.DB, jwtSecret string) {
 	auditRouter := NewAuditRouter(auditService, db)
 
 	auditGroup := r.Group("")
-	auditGroup.Use(middleware.AuthMiddleware(jwtSecret))
+	auditGroup.Use(
+		middleware.AuthMiddleware(jwtSecret),
+		middleware.RequireRoles(db, constant.UserRoleAdmin, constant.UserRoleSuperAdmin),
+	)
 	{
-		// 也许需要一个 middleware 来限制只有 admin 可以访问
-		// 目前先加上登录验证
 		auditGroup.GET("/audit_logs", auditRouter.ListAuditLogs)
 	}
 }
 
 func (r *AuditRouter) ListAuditLogs(c *gin.Context) {
 	resource := c.Query("resource") // optional
-	
+
 	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-	
+
 	if page < 1 {
 		page = 1
 	}
@@ -81,10 +81,10 @@ func (r *AuditRouter) ListAuditLogs(c *gin.Context) {
 		"message": "获取成功",
 		"code":    constant.SuccessCode,
 		"data": gin.H{
-			"logs":      logs,
-			"total":     total,
-			"page":      page,
-			"page_size": pageSize,
+			"logs":        logs,
+			"total":       total,
+			"page":        page,
+			"page_size":   pageSize,
 			"total_pages": (total + int64(pageSize) - 1) / int64(pageSize),
 		},
 	})

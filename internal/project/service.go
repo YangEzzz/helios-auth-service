@@ -12,7 +12,8 @@ import (
 )
 
 type Service interface {
-	CreateProject(ctx context.Context, opID, projectName, projectIdString, description string, roleDocumentation []string) (*models.Project, error)
+	CreateProject(ctx context.Context, opID, projectName, projectIdString, projectURL, description string, roleDocumentation []string) (*models.Project, error)
+	UpdateProject(ctx context.Context, opID, id, projectName, projectURL, description string) (*models.Project, error)
 	GetProjectByID(ctx context.Context, id string) (*models.Project, error)
 	DeleteProject(ctx context.Context, opID, id string) error
 	AddRoleTemplate(ctx context.Context, opID, projectID, roleName, description string) error
@@ -31,18 +32,56 @@ type service struct {
 	auditService audit.Service
 }
 
+var defaultProjectRoleTemplates = []struct {
+	name        string
+	description string
+}{
+	{name: "admin", description: "管理员：负责项目成员授权、角色分配与项目权限管理"},
+	{name: "productor", description: "产品：负责产品内容、需求与业务配置管理"},
+	{name: "developer", description: "开发：负责技术接入、开发调试与工程配置"},
+}
+
 func NewService(dao Dao, auditService audit.Service) Service {
 	return &service{dao: dao, auditService: auditService}
 }
 
-func (s *service) CreateProject(ctx context.Context, opID, projectName, projectIdString, description string, roleDocumentation []string) (*models.Project, error) {
-	project := models.NewProject(projectName, projectIdString, description, roleDocumentation)
+func (s *service) CreateProject(ctx context.Context, opID, projectName, projectIdString, projectURL, description string, roleDocumentation []string) (*models.Project, error) {
+	project := models.NewProject(projectName, projectIdString, strings.TrimSpace(projectURL), description, roleDocumentation)
 	if err := s.dao.CreateProject(project); err != nil {
 		return nil, err
 	}
 
+	for _, template := range defaultProjectRoleTemplates {
+		if err := s.dao.AddRoleTemplate(models.NewProjectRoleTemplate(project.ID, template.name, template.description)); err != nil {
+			return nil, err
+		}
+	}
+
 	opUUID, _ := uuid.Parse(opID)
 	_ = s.auditService.LogAction(ctx, &opUUID, "create_project", "project:"+project.ID.String(), "Created project "+project.ProjectName, "")
+	return project, nil
+}
+
+func (s *service) UpdateProject(ctx context.Context, opID, id, projectName, projectURL, description string) (*models.Project, error) {
+	pID, err := uuid.Parse(id)
+	if err != nil {
+		return nil, err
+	}
+	projectName = strings.TrimSpace(projectName)
+	if projectName == "" {
+		return nil, errors.New("项目名称不能为空")
+	}
+
+	project, err := s.dao.UpdateProject(pID, projectName, strings.TrimSpace(projectURL), strings.TrimSpace(description))
+	if err != nil {
+		if errors.Is(err, constant.ErrProjectNotFound) {
+			return nil, constant.ErrProjectNotFound
+		}
+		return nil, err
+	}
+
+	opUUID, _ := uuid.Parse(opID)
+	_ = s.auditService.LogAction(ctx, &opUUID, "update_project", "project:"+project.ID.String(), "Updated project "+project.ProjectName, "")
 	return project, nil
 }
 
@@ -91,6 +130,9 @@ func (s *service) UpdateProjectMemberRole(ctx context.Context, opID, projectID, 
 	if err != nil {
 		return err
 	}
+	if err := s.ensureRoleTemplateExists(pID, role); err != nil {
+		return err
+	}
 
 	if err := s.dao.UpdateProjectMemberRole(uID, pID, role); err != nil {
 		return err
@@ -111,6 +153,9 @@ func (s *service) AddProjectMember(ctx context.Context, opID, projectID, userID,
 	}
 	uID, err := uuid.Parse(userID)
 	if err != nil {
+		return err
+	}
+	if err := s.ensureRoleTemplateExists(pID, role); err != nil {
 		return err
 	}
 
@@ -176,4 +221,15 @@ func (s *service) ListMyProjects(ctx context.Context, userID string) ([]models.P
 	}
 
 	return s.dao.ListProjectsForUser(uID)
+}
+
+func (s *service) ensureRoleTemplateExists(projectID uuid.UUID, role string) error {
+	exists, err := s.dao.RoleTemplateExists(projectID, role)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return errors.New("该角色不属于当前项目的角色模板，请先在项目中添加角色模板")
+	}
+	return nil
 }

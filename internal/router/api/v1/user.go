@@ -35,13 +35,20 @@ func InitUserRouter(r *gin.RouterGroup, db *gorm.DB, jwtSecret string) {
 	userGroup.Use(middleware.AuthMiddleware(jwtSecret))
 	{
 		userGroup.GET("/me", userRouter.GetCurrentUser)
-		userGroup.GET("/users", userRouter.GetUserByID)
-		userGroup.GET("/users/count", userRouter.GetUserCount)
-		userGroup.GET("/users/list", userRouter.GetAllUsers)
-		userGroup.POST("/approve_user", userRouter.ApproveUser)
-		userGroup.POST("/reject_user", userRouter.RejectUser)
-		userGroup.POST("/set_user_role", userRouter.SetUserRole)
 		userGroup.POST("/avatar", userRouter.UpdateAvatar)
+
+		adminGroup := userGroup.Group("")
+		adminGroup.Use(middleware.RequireRoles(db, constant.UserRoleAdmin, constant.UserRoleSuperAdmin))
+		{
+			adminGroup.GET("/users", userRouter.GetUserByID)
+			adminGroup.GET("/users/count", userRouter.GetUserCount)
+			adminGroup.GET("/users/list", userRouter.GetAllUsers)
+			adminGroup.POST("/approve_user", userRouter.ApproveUser)
+			adminGroup.POST("/reject_user", userRouter.RejectUser)
+			adminGroup.POST("/lock_user", userRouter.LockUser)
+			adminGroup.POST("/unlock_user", userRouter.UnlockUser)
+			adminGroup.POST("/set_user_role", userRouter.SetUserRole)
+		}
 	}
 }
 
@@ -75,7 +82,13 @@ func (r *UserRouter) GetUserByID(c *gin.Context) {
 		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
 		return
 	}
-	c.JSON(200, gin.H{"user": user, "code": constant.SuccessCode})
+	c.JSON(200, gin.H{
+		"message": "获取成功",
+		"data": gin.H{
+			"user": user,
+		},
+		"code": constant.SuccessCode,
+	})
 }
 
 // GetUserCount 获取用户统计信息
@@ -114,7 +127,7 @@ func (r *UserRouter) GetAllUsers(c *gin.Context) {
 	if page < 1 {
 		page = 1
 	}
-	if pageSize < 1 || pageSize > 100 {
+	if pageSize < 1 || pageSize > 1000 {
 		pageSize = 10
 	}
 
@@ -152,7 +165,7 @@ func (r *UserRouter) ApproveUser(c *gin.Context) {
 		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
 		return
 	}
-	c.JSON(200, gin.H{"message": "User approved successfully", "code": constant.SuccessCode})
+	c.JSON(200, gin.H{"message": "User approved successfully", "data": gin.H{}, "code": constant.SuccessCode})
 }
 
 func (r *UserRouter) RejectUser(c *gin.Context) {
@@ -165,7 +178,33 @@ func (r *UserRouter) RejectUser(c *gin.Context) {
 		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
 		return
 	}
-	c.JSON(200, gin.H{"message": "User rejected successfully", "code": constant.SuccessCode})
+	c.JSON(200, gin.H{"message": "User rejected successfully", "data": gin.H{}, "code": constant.SuccessCode})
+}
+
+func (r *UserRouter) LockUser(c *gin.Context) {
+	var req UserActionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": err.Error(), "code": constant.ErrorCode})
+		return
+	}
+	if err := r.userService.LockUser(c.Request.Context(), req.ID); err != nil {
+		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
+		return
+	}
+	c.JSON(200, gin.H{"message": "User locked successfully", "data": gin.H{}, "code": constant.SuccessCode})
+}
+
+func (r *UserRouter) UnlockUser(c *gin.Context) {
+	var req UserActionRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"error": err.Error(), "code": constant.ErrorCode})
+		return
+	}
+	if err := r.userService.UnlockUser(c.Request.Context(), req.ID); err != nil {
+		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
+		return
+	}
+	c.JSON(200, gin.H{"message": "User unlocked successfully", "data": gin.H{}, "code": constant.SuccessCode})
 }
 
 type SetUserRoleRequest struct {
@@ -197,7 +236,7 @@ func (r *UserRouter) SetUserRole(c *gin.Context) {
 		return
 	}
 
-	c.JSON(200, gin.H{"message": "User role updated successfully", "code": constant.SuccessCode})
+	c.JSON(200, gin.H{"message": "User role updated successfully", "data": gin.H{}, "code": constant.SuccessCode})
 }
 
 type UpdateAvatarRequest struct {

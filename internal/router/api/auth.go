@@ -58,6 +58,7 @@ type RegisterRequest struct {
 	Password   string `json:"password" binding:"required,min=6"`
 	Department string `json:"department"`
 	Reason     string `json:"reason"`
+	Avatar     string `json:"avatar"`
 }
 
 type LoginRequest struct {
@@ -103,7 +104,7 @@ func (r *AuthRouter) ExternalLogin(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": utils.GetValidationError(err), "code": constant.ErrorCode})
 		return
 	}
-	
+
 	// 这里将 username 作为 email 传入 Login 方法
 	user, token, err := r.authService.Login(c.Request.Context(), req.Username, req.Password)
 
@@ -150,7 +151,7 @@ func (r *AuthRouter) Register(c *gin.Context) {
 		return
 	}
 
-	user, err := r.authService.Register(c.Request.Context(), req.Email, req.Name, req.Password, req.Department, req.Reason)
+	user, err := r.authService.Register(c.Request.Context(), req.Email, req.Name, req.Password, req.Department, req.Reason, req.Avatar)
 
 	if err != nil {
 		c.JSON(http.StatusOK, gin.H{"error": utils.GetValidationError(err), "code": constant.ErrorCode, "message": utils.GetValidationError(err)})
@@ -160,20 +161,38 @@ func (r *AuthRouter) Register(c *gin.Context) {
 	// 记录审计日志
 	_ = r.auditService.LogAction(c.Request.Context(), &user.ID, "user_register", "user:"+user.ID.String(), "User registered, pending approval", c.ClientIP())
 
-	c.JSON(http.StatusOK, gin.H{"message": "申请账号成功，等待管理员审核", "user": user, "code": constant.SuccessCode})
+	c.JSON(http.StatusOK, gin.H{
+		"message": "申请账号成功，等待管理员审核",
+		"data": gin.H{
+			"user": user,
+		},
+		"code": constant.SuccessCode,
+	})
 }
 
 func GetRoleList(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"message": "获取成功", "roles": []constant.UserRole{constant.UserRoleSuperAdmin, constant.UserRoleAdmin, constant.UserRoleUser}, "code": constant.SuccessCode})
+	c.JSON(http.StatusOK, gin.H{
+		"message": "获取成功",
+		"data": gin.H{
+			"roles": []constant.UserRole{constant.UserRoleSuperAdmin, constant.UserRoleAdmin, constant.UserRoleUser},
+		},
+		"code": constant.SuccessCode,
+	})
 }
 
 func GetStatusList(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{"message": "获取成功", "status": []constant.UserStatus{constant.UserStatusActive, constant.UserStatusInactive, constant.UserStatusLocked}, "code": constant.SuccessCode})
+	c.JSON(http.StatusOK, gin.H{
+		"message": "获取成功",
+		"data": gin.H{
+			"status": []constant.UserStatus{constant.UserStatusActive, constant.UserStatusInactive, constant.UserStatusLocked},
+		},
+		"code": constant.SuccessCode,
+	})
 }
 
 func (r *AuthRouter) Verify(c *gin.Context) {
 	// 1. Get User ID from Context (set by AuthMiddleware)
-	userIDStr, exists := c.Get("userID")
+	userIDStr, exists := c.Get("user_id")
 	if !exists {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized", "code": constant.ErrorCode})
 		return
@@ -201,11 +220,20 @@ func (r *AuthRouter) Verify(c *gin.Context) {
 		})
 		return
 	}
+	if role == "" {
+		c.JSON(http.StatusForbidden, gin.H{
+			"is_valid": false,
+			"error":    "非该项目成员",
+			"code":     constant.NotProjectMemberCode,
+		})
+		return
+	}
 
 	// 4. Return Success
 	c.JSON(http.StatusOK, gin.H{
 		"is_valid":        true,
 		"user_id":         userID,
+		"role":            role,
 		"role_in_project": role,
 		"code":            constant.SuccessCode,
 	})

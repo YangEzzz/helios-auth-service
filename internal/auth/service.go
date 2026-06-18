@@ -12,7 +12,7 @@ import (
 
 type Service interface {
 	// Register 用户注册
-	Register(ctx context.Context, email, name, password, department, reason string) (*models.User, error)
+	Register(ctx context.Context, email, name, password, department, reason, avatar string) (*models.User, error)
 	// Login 用户登录（返回 用户信息和 JWT Token）
 	Login(ctx context.Context, email, password string) (*models.User, string, error)
 }
@@ -26,14 +26,14 @@ func NewService(dao Dao, jwtSecret string) Service {
 	return &service{dao: dao, jwtSecret: jwtSecret}
 }
 
-func (s *service) Register(ctx context.Context, email, name, password, department, reason string) (*models.User, error) {
+func (s *service) Register(ctx context.Context, email, name, password, department, reason, avatar string) (*models.User, error) {
 	// 对密码进行hash处理
 	hashedPassword, err := utils.HashPassword(password)
 	if err != nil {
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
-	user := models.NewUser(name, email, hashedPassword, department, reason)
+	user := models.NewUser(name, email, hashedPassword, department, reason, avatar)
 	err = s.dao.CreateUser(user)
 	if err != nil {
 		return nil, err

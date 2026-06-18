@@ -21,7 +21,12 @@ type Config struct {
 }
 
 func LoadConfig() *Config {
-	if err := godotenv.Load(".env-production"); err != nil {
+	switch {
+	case godotenv.Load(".env") == nil:
+		log.Println("Loaded configuration from .env")
+	case godotenv.Load(".env-production") == nil:
+		log.Println("Loaded configuration from .env-production")
+	default:
 		log.Println("No .env file found, loading from environment variables")
 	}
 

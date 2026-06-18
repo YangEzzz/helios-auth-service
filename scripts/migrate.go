@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
 	"os"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/golang-migrate/migrate/v4/database/postgres"
 	_ "github.com/golang-migrate/migrate/v4/source/file"
 	_ "github.com/lib/pq"
+	"gorm.io/gorm"
 
 	"helios-auth-service/internal/config"
 	"helios-auth-service/internal/database"
@@ -26,7 +26,7 @@ func main() {
 	cfg := config.LoadConfig()
 
 	// 连接数据库
-	var db *database.DB
+	var db *gorm.DB
 	var err error
 
 	db, err = database.NewConnection(
@@ -41,10 +41,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
-	defer db.Close()
+	sqlDB, err := db.DB()
+	if err != nil {
+		log.Fatalf("Failed to get underlying sql.DB: %v", err)
+	}
+	defer sqlDB.Close()
 
 	// 创建migrate实例
-	driver, err := postgres.WithInstance(db.DB.DB, &postgres.Config{})
+	driver, err := postgres.WithInstance(sqlDB, &postgres.Config{})
 	if err != nil {
 		log.Fatalf("Failed to create postgres driver: %v", err)
 	}

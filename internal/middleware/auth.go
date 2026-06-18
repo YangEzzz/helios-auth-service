@@ -1,10 +1,13 @@
 package middleware
 
 import (
+	"helios-auth-service/internal/constant"
+	"helios-auth-service/internal/models"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 
 	"helios-auth-service/internal/utils"
 )
@@ -43,6 +46,38 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 		c.Set("user_id", claims.UserID.String())
 
 		// 5. 继续执行后续的 handler
+		c.Next()
+	}
+}
+
+// RequireRoles limits an authenticated route to users with one of the allowed global roles.
+func RequireRoles(db *gorm.DB, roles ...constant.UserRole) gin.HandlerFunc {
+	allowedRoles := make(map[constant.UserRole]struct{}, len(roles))
+	for _, role := range roles {
+		allowedRoles[role] = struct{}{}
+	}
+
+	return func(c *gin.Context) {
+		userID, exists := c.Get("user_id")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized", "code": constant.ErrorCode})
+			c.Abort()
+			return
+		}
+
+		var user models.User
+		if err := db.Select("id", "role").Where("id = ?", userID.(string)).First(&user).Error; err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized", "code": constant.ErrorCode})
+			c.Abort()
+			return
+		}
+
+		if _, ok := allowedRoles[user.Role]; !ok {
+			c.JSON(http.StatusForbidden, gin.H{"error": "权限不足", "code": constant.ErrorCode})
+			c.Abort()
+			return
+		}
+
 		c.Next()
 	}
 }

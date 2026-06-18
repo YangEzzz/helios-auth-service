@@ -35,21 +35,27 @@ func InitProjectRouter(r *gin.RouterGroup, db *gorm.DB, jwtSecret string) {
 	projectGroup := r.Group("")
 	projectGroup.Use(middleware.AuthMiddleware(jwtSecret))
 	{
-		projectGroup.GET("/projects", projectRouter.ListProjects)
 		projectGroup.GET("/my-projects", projectRouter.ListMyProjects)
 		projectGroup.GET("/project", projectRouter.GetProjectByID)
 		projectGroup.GET("/project/role_templates", projectRouter.ListRoleTemplates)
 		projectGroup.GET("/project/members", projectRouter.ListProjectMembers)
-		projectGroup.GET("/project/audit_logs", projectRouter.ListAuditLogs)
 
-		projectGroup.POST("/projects", projectRouter.CreateProject)
-		projectGroup.POST("/delete_project", projectRouter.DeleteProject)
-		projectGroup.POST("/add_project_template", projectRouter.AddRoleTemplate)
+		adminGroup := projectGroup.Group("")
+		adminGroup.Use(middleware.RequireRoles(db, constant.UserRoleAdmin, constant.UserRoleSuperAdmin))
+		{
+			adminGroup.GET("/projects", projectRouter.ListProjects)
+			adminGroup.GET("/project/audit_logs", projectRouter.ListAuditLogs)
 
-		// 核心成员管理
-		projectGroup.POST("/project/member", projectRouter.AddMember)
-		projectGroup.POST("/project/member/remove", projectRouter.RemoveMember)
-		projectGroup.POST("/project/member/role", projectRouter.UpdateMemberRole)
+			adminGroup.POST("/projects", projectRouter.CreateProject)
+			adminGroup.POST("/project/update", projectRouter.UpdateProject)
+			adminGroup.POST("/delete_project", projectRouter.DeleteProject)
+			adminGroup.POST("/add_project_template", projectRouter.AddRoleTemplate)
+
+			// 核心成员管理
+			adminGroup.POST("/project/member", projectRouter.AddMember)
+			adminGroup.POST("/project/member/remove", projectRouter.RemoveMember)
+			adminGroup.POST("/project/member/role", projectRouter.UpdateMemberRole)
+		}
 	}
 }
 
@@ -59,7 +65,13 @@ func (r *ProjectRouter) ListProjects(c *gin.Context) {
 		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
 		return
 	}
-	c.JSON(200, gin.H{"projects": projects, "code": constant.SuccessCode})
+	c.JSON(200, gin.H{
+		"message": "获取成功",
+		"data": gin.H{
+			"projects": projects,
+		},
+		"code": constant.SuccessCode,
+	})
 }
 
 func (r *ProjectRouter) ListMyProjects(c *gin.Context) {
@@ -91,7 +103,13 @@ func (r *ProjectRouter) GetProjectByID(c *gin.Context) {
 		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
 		return
 	}
-	c.JSON(200, gin.H{"project": projects, "code": constant.SuccessCode})
+	c.JSON(200, gin.H{
+		"message": "获取成功",
+		"data": gin.H{
+			"project": projects,
+		},
+		"code": constant.SuccessCode,
+	})
 }
 
 func (r *ProjectRouter) ListRoleTemplates(c *gin.Context) {
@@ -101,7 +119,13 @@ func (r *ProjectRouter) ListRoleTemplates(c *gin.Context) {
 		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
 		return
 	}
-	c.JSON(200, gin.H{"role_templates": templates, "code": constant.SuccessCode})
+	c.JSON(200, gin.H{
+		"message": "获取成功",
+		"data": gin.H{
+			"role_templates": templates,
+		},
+		"code": constant.SuccessCode,
+	})
 }
 
 func (r *ProjectRouter) ListAuditLogs(c *gin.Context) {
@@ -153,7 +177,7 @@ func (r *ProjectRouter) AddMember(c *gin.Context) {
 		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
 		return
 	}
-	c.JSON(200, gin.H{"message": "Member added successfully", "code": constant.SuccessCode})
+	c.JSON(200, gin.H{"message": "Member added successfully", "data": gin.H{}, "code": constant.SuccessCode})
 }
 
 func (r *ProjectRouter) ListProjectMembers(c *gin.Context) {
@@ -163,7 +187,13 @@ func (r *ProjectRouter) ListProjectMembers(c *gin.Context) {
 		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
 		return
 	}
-	c.JSON(200, gin.H{"members": members, "code": constant.SuccessCode})
+	c.JSON(200, gin.H{
+		"message": "获取成功",
+		"data": gin.H{
+			"members": members,
+		},
+		"code": constant.SuccessCode,
+	})
 }
 
 func (r *ProjectRouter) RemoveMember(c *gin.Context) {
@@ -180,7 +210,7 @@ func (r *ProjectRouter) RemoveMember(c *gin.Context) {
 		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
 		return
 	}
-	c.JSON(200, gin.H{"message": "Member removed successfully", "code": constant.SuccessCode})
+	c.JSON(200, gin.H{"message": "Member removed successfully", "data": gin.H{}, "code": constant.SuccessCode})
 }
 
 func (r *ProjectRouter) UpdateMemberRole(c *gin.Context) {
@@ -198,7 +228,7 @@ func (r *ProjectRouter) UpdateMemberRole(c *gin.Context) {
 		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
 		return
 	}
-	c.JSON(200, gin.H{"message": "Role updated successfully", "code": constant.SuccessCode})
+	c.JSON(200, gin.H{"message": "Role updated successfully", "data": gin.H{}, "code": constant.SuccessCode})
 }
 
 // ---------------- 基础项目指令 ----------------
@@ -206,7 +236,15 @@ func (r *ProjectRouter) UpdateMemberRole(c *gin.Context) {
 type CreateProjectRequest struct {
 	ProjectName     string `json:"project_name" binding:"required"`
 	ProjectIDString string `json:"project_id_string" binding:"required"`
+	ProjectURL      string `json:"project_url"`
 	Description     string `json:"description"`
+}
+
+type UpdateProjectRequest struct {
+	ID          string `json:"id" binding:"required"`
+	ProjectName string `json:"project_name" binding:"required"`
+	ProjectURL  string `json:"project_url"`
+	Description string `json:"description"`
 }
 
 func (r *ProjectRouter) CreateProject(c *gin.Context) {
@@ -216,12 +254,39 @@ func (r *ProjectRouter) CreateProject(c *gin.Context) {
 		return
 	}
 	opID, _ := c.Get("user_id")
-	project, err := r.projectService.CreateProject(c.Request.Context(), opID.(string), req.ProjectName, req.ProjectIDString, req.Description, []string{})
+	project, err := r.projectService.CreateProject(c.Request.Context(), opID.(string), req.ProjectName, req.ProjectIDString, req.ProjectURL, req.Description, []string{})
 	if err != nil {
 		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
 		return
 	}
-	c.JSON(200, gin.H{"message": "Project created successfully", "project": project, "code": constant.SuccessCode})
+	c.JSON(200, gin.H{
+		"message": "Project created successfully",
+		"data": gin.H{
+			"project": project,
+		},
+		"code": constant.SuccessCode,
+	})
+}
+
+func (r *ProjectRouter) UpdateProject(c *gin.Context) {
+	var req UpdateProjectRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(400, gin.H{"message": err.Error(), "code": constant.ErrorCode})
+		return
+	}
+	opID, _ := c.Get("user_id")
+	project, err := r.projectService.UpdateProject(c.Request.Context(), opID.(string), req.ID, req.ProjectName, req.ProjectURL, req.Description)
+	if err != nil {
+		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
+		return
+	}
+	c.JSON(200, gin.H{
+		"message": "Project updated successfully",
+		"data": gin.H{
+			"project": project,
+		},
+		"code": constant.SuccessCode,
+	})
 }
 
 type DeleteProjectRequest struct {
@@ -239,7 +304,7 @@ func (r *ProjectRouter) DeleteProject(c *gin.Context) {
 		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
 		return
 	}
-	c.JSON(200, gin.H{"message": "Project deleted successfully", "code": constant.SuccessCode})
+	c.JSON(200, gin.H{"message": "Project deleted successfully", "data": gin.H{}, "code": constant.SuccessCode})
 }
 
 type AddRoleTemplateRequest struct {
@@ -259,5 +324,5 @@ func (r *ProjectRouter) AddRoleTemplate(c *gin.Context) {
 		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
 		return
 	}
-	c.JSON(200, gin.H{"message": "Role template added successfully", "code": constant.SuccessCode})
+	c.JSON(200, gin.H{"message": "Role template added successfully", "data": gin.H{}, "code": constant.SuccessCode})
 }

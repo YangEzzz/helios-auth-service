@@ -12,6 +12,8 @@ type Service interface {
 	GetUserByID(ctx context.Context, id string) (*models.User, error)
 	ApproveUser(ctx context.Context, id string) error
 	RejectUser(ctx context.Context, id string) error
+	LockUser(ctx context.Context, id string) error
+	UnlockUser(ctx context.Context, id string) error
 	GetTotalUserCount(ctx context.Context) (int64, error)
 	GetUserCountByStatus(ctx context.Context, status constant.UserStatus) (int64, error)
 	// GetAllUsers 获取所有用户列表（支持分页）
@@ -54,7 +56,23 @@ func (s *service) RejectUser(ctx context.Context, id string) error {
 	if err := s.dao.RejectUser(id); err != nil {
 		return err
 	}
-	_ = s.auditService.LogAction(ctx, nil, "reject_user", "user:"+id, "Rejected user", "")
+	_ = s.auditService.LogAction(ctx, nil, constant.ActionRejectUser, "user:"+id, "Rejected user", "")
+	return nil
+}
+
+func (s *service) LockUser(ctx context.Context, id string) error {
+	if err := s.dao.LockUser(id); err != nil {
+		return err
+	}
+	_ = s.auditService.LogAction(ctx, nil, constant.ActionLockUser, "user:"+id, "Locked user", "")
+	return nil
+}
+
+func (s *service) UnlockUser(ctx context.Context, id string) error {
+	if err := s.dao.UnlockUser(id); err != nil {
+		return err
+	}
+	_ = s.auditService.LogAction(ctx, nil, constant.ActionUnlockUser, "user:"+id, "Unlocked user", "")
 	return nil
 }
 

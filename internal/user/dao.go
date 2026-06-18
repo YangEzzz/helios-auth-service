@@ -21,6 +21,10 @@ type Dao interface {
 	ApproveUser(id string) error
 	// RejectUser 拒绝用户
 	RejectUser(id string) error
+	// LockUser 锁定用户
+	LockUser(id string) error
+	// UnlockUser 解锁用户
+	UnlockUser(id string) error
 	// GetTotalUserCount 获取总用户数
 	GetTotalUserCount() (int64, error)
 	// GetUserCountByStatus 根据状态获取用户数
@@ -67,6 +71,14 @@ func (u *userDao) ApproveUser(id string) error {
 
 func (u *userDao) RejectUser(id string) error {
 	return u.db.Model(&models.User{}).Where("id = ?", id).Update("status", constant.UserStatusRejected).Error
+}
+
+func (u *userDao) LockUser(id string) error {
+	return u.db.Model(&models.User{}).Where("id = ?", id).Update("status", constant.UserStatusLocked).Error
+}
+
+func (u *userDao) UnlockUser(id string) error {
+	return u.db.Model(&models.User{}).Where("id = ?", id).Update("status", constant.UserStatusActive).Error
 }
 
 // GetTotalUserCount 获取总用户数

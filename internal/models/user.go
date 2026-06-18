@@ -26,7 +26,7 @@ func (User) TableName() string {
 	return "users"
 }
 
-func NewUser(username, email, passwordHash, department, reason string) *User {
+func NewUser(username, email, passwordHash, department, reason, avatar string) *User {
 	return &User{
 		ID:           uuid.New(),
 		Email:        email,
@@ -37,5 +37,6 @@ func NewUser(username, email, passwordHash, department, reason string) *User {
 		Status:       constant.UserStatusPending, // 注册后默认为待处理
 		Department:   department,
 		Reason:       reason,
+		Avatar:       avatar,
 	}
 }
