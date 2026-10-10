@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"net"
+	"net/url"
 	"time"
 
 	"gorm.io/driver/postgres"
@@ -17,8 +19,11 @@ type DB struct {
 // NewConnection 创建新的数据库连接
 func NewConnection(host, port, user, password, dbname, sslmode string) (*gorm.DB, error) {
 	// 构建连接字符串
-	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		host, port, user, password, dbname, sslmode)
+	dbURL := &url.URL{Scheme: "postgres", User: url.UserPassword(user, password), Host: net.JoinHostPort(host, port), Path: "/" + dbname}
+	query := dbURL.Query()
+	query.Set("sslmode", sslmode)
+	dbURL.RawQuery = query.Encode()
+	dsn := dbURL.String()
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {

@@ -32,7 +32,7 @@ func InitAuditRouter(r *gin.RouterGroup, db *gorm.DB, jwtSecret string) {
 
 	auditGroup := r.Group("")
 	auditGroup.Use(
-		middleware.AuthMiddleware(jwtSecret),
+		middleware.AuthMiddleware(jwtSecret, db),
 		middleware.RequireRoles(db, constant.UserRoleAdmin, constant.UserRoleSuperAdmin),
 	)
 	{

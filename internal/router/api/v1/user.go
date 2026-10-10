@@ -32,7 +32,7 @@ func InitUserRouter(r *gin.RouterGroup, db *gorm.DB, jwtSecret string) {
 	userRouter := NewUserRouter(userService)
 
 	userGroup := r.Group("")
-	userGroup.Use(middleware.AuthMiddleware(jwtSecret))
+	userGroup.Use(middleware.AuthMiddleware(jwtSecret, db))
 	{
 		userGroup.GET("/me", userRouter.GetCurrentUser)
 		userGroup.POST("/avatar", userRouter.UpdateAvatar)

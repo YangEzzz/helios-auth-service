@@ -3,6 +3,7 @@ package middleware
 import (
 	"helios-auth-service/internal/constant"
 	"helios-auth-service/internal/models"
+	"helios-auth-service/internal/session"
 	"net/http"
 	"strings"
 
@@ -14,8 +15,20 @@ import (
 
 // AuthMiddleware JWT 认证中间件
 // 用于保护需要登录才能访问的接口
-func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
+func AuthMiddleware(jwtSecret string, databases ...*gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		if len(databases) > 0 {
+			if _, err := c.Cookie(session.CookieName); err == nil {
+				user, err := session.User(c, databases[0])
+				if err != nil {
+					c.AbortWithStatusJSON(401, gin.H{"code": 401, "message": "登录已失效，请重新登录"})
+					return
+				}
+				c.Set("user_id", user.ID.String())
+				c.Next()
+				return
+			}
+		}
 		// 1. 从请求头获取 Authorization
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
@@ -40,6 +53,13 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "token缺失或无效"})
 			c.Abort()
 			return
+		}
+		if len(databases) > 0 {
+			var user models.User
+			if err := databases[0].Select("id", "status").First(&user, "id = ?", claims.UserID).Error; err != nil || user.Status != constant.UserStatusActive {
+				c.AbortWithStatusJSON(401, gin.H{"code": 401, "message": "账号暂不可用"})
+				return
+			}
 		}
 
 		// 4. 将用户 ID 存入上下文，供后续 handler 使用

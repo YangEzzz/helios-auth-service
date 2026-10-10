@@ -2,7 +2,9 @@ package config
 
 import (
 	"log"
+	"net/url"
 	"os"
+	"strings"
 
 	"github.com/joho/godotenv"
 )
@@ -18,6 +20,9 @@ type Config struct {
 	DatabaseName     string
 	DatabaseSSLMode  string
 	DBAutoMigrate    bool
+	FrontendURL      string
+	CookieSecure     bool
+	TrustedProxies   []string
 }
 
 func LoadConfig() *Config {
@@ -41,10 +46,20 @@ func LoadConfig() *Config {
 		DatabaseName:     getEnv("DB_NAME", "system_db"),
 		DatabaseSSLMode:  getEnv("DB_SSLMODE", "disable"),
 		DBAutoMigrate:    getEnv("DB_AUTO_MIGRATE", "true") == "true",
+		FrontendURL:      getEnv("FRONTEND_URL", "http://localhost:5174"),
+		CookieSecure:     getEnv("COOKIE_SECURE", "true") == "true",
+		TrustedProxies:   strings.Split(getEnv("TRUSTED_PROXIES", "127.0.0.1,::1"), ","),
 	}
 
 	if cfg.JWTSecret == "" {
 		log.Fatal("Missing critical environment variables (JWT_SECRET)")
+	}
+	u, err := url.Parse(cfg.FrontendURL)
+	if err != nil || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Scheme != "https" && !(u.Scheme == "http" && (u.Hostname() == "localhost" || u.Hostname() == "127.0.0.1" || u.Hostname() == "::1"))) {
+		log.Fatal("FRONTEND_URL must use HTTPS, or HTTP on loopback for local development")
+	}
+	if !cfg.CookieSecure && u.Hostname() != "localhost" && u.Hostname() != "127.0.0.1" && u.Hostname() != "::1" {
+		log.Fatal("COOKIE_SECURE=false is only allowed for loopback development")
 	}
 
 	return cfg

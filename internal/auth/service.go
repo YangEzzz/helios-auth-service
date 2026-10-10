@@ -42,7 +42,6 @@ func (s *service) Register(ctx context.Context, email, name, password, departmen
 }
 
 func (s *service) Login(ctx context.Context, email, password string) (*models.User, string, error) {
-	fmt.Println("Login user:", email)
 	user, err := s.dao.GetUserByEmail(email)
 	if err != nil {
 		if errors.Is(err, constant.ErrUserNotFound) {
@@ -76,7 +75,5 @@ func (s *service) Login(ctx context.Context, email, password string) (*models.Us
 	if err != nil {
 		return nil, "", fmt.Errorf("failed to generate token: %w", err)
 	}
-	fmt.Println("Login successful:", token)
-	fmt.Println("Login successful:", user)
 	return user, token, nil
 }

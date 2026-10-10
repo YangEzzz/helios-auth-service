@@ -33,7 +33,7 @@ func InitProjectRouter(r *gin.RouterGroup, db *gorm.DB, jwtSecret string) {
 	projectRouter := NewProjectRouter(projectService, auditService)
 
 	projectGroup := r.Group("")
-	projectGroup.Use(middleware.AuthMiddleware(jwtSecret))
+	projectGroup.Use(middleware.AuthMiddleware(jwtSecret, db))
 	{
 		projectGroup.GET("/my-projects", projectRouter.ListMyProjects)
 		projectGroup.GET("/project", projectRouter.GetProjectByID)

@@ -25,7 +25,7 @@ func InitDashboardRouter(r *gin.RouterGroup, db *gorm.DB, jwtSecret string) {
 	dashboardRouter := NewDashboardRouter(dashboardService)
 
 	dashboardGroup := r.Group("")
-	dashboardGroup.Use(middleware.AuthMiddleware(jwtSecret))
+	dashboardGroup.Use(middleware.AuthMiddleware(jwtSecret, db))
 	{
 		dashboardGroup.GET("/dashboard", dashboardRouter.GetDashboard)
 	}

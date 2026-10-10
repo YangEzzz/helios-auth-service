@@ -49,7 +49,7 @@ func InitAuthRouter(r *gin.RouterGroup, db *gorm.DB, jwtSecret string) {
 	r.GET("/status", GetStatusList)
 
 	// Protected Verify Endpoint
-	r.GET("/auth/verify", middleware.AuthMiddleware(jwtSecret), authRouter.Verify)
+	r.GET("/auth/verify", middleware.AuthMiddleware(jwtSecret, db), authRouter.Verify)
 }
 
 type RegisterRequest struct {

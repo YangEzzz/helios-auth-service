@@ -1,11 +1,13 @@
 package router
 
 import (
-	"fmt"
 	"helios-auth-service/internal/database"
+	"helios-auth-service/internal/middleware"
 	"helios-auth-service/internal/models"
 	"helios-auth-service/internal/router/api"
 	v1 "helios-auth-service/internal/router/api/v1"
+	"helios-auth-service/internal/session"
+	"helios-auth-service/internal/sso"
 	"log"
 	"os"
 
@@ -16,16 +18,6 @@ import (
 
 // SetupRouter 初始化路由
 func SetupRouter(cfg *config.Config) *gin.Engine {
-	// 1. 初始化 GORM 数据库连接
-	fmt.Printf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		cfg.DatabaseHost,
-		cfg.DatabasePort,
-		cfg.DatabaseUser,
-		cfg.DatabasePassword,
-		cfg.DatabaseName,
-		cfg.DatabaseSSLMode,
-	)
-
 	db, err := database.NewConnection(
 		cfg.DatabaseHost,
 		cfg.DatabasePort,
@@ -49,6 +41,7 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 			&models.ProjectMembership{},
 			&models.ProjectRoleTemplate{},
 			&models.AuditLog{},
+			&session.Session{}, &sso.Client{}, &sso.Request{}, &sso.Code{},
 		)
 		if err != nil {
 			log.Fatalf("Failed to auto-migrate database: %v", err)
@@ -59,7 +52,11 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 	}
 
 	// 5. 创建 Gin 引擎
-	r := gin.Default()
+	r := gin.New()
+	if err := r.SetTrustedProxies(cfg.TrustedProxies); err != nil {
+		log.Fatal("Invalid trusted proxy configuration")
+	}
+	r.Use(gin.Recovery()) // Callback URLs contain authorization codes: do not log query strings.
 
 	// 确保上传目录存在
 	_ = os.MkdirAll("./uploads/avatars", os.ModePerm)
@@ -69,13 +66,21 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 
 	// CORS设置 (示例)
 	r.Use(func(c *gin.Context) {
-		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
-		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
+		if c.GetHeader("Origin") == session.Origin(cfg.FrontendURL) {
+			c.Header("Access-Control-Allow-Origin", session.Origin(cfg.FrontendURL))
+			c.Header("Access-Control-Allow-Credentials", "true")
+			c.Header("Vary", "Origin")
+		}
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
 			return
+		}
+		if c.Request.Method != "GET" && c.Request.Method != "HEAD" {
+			if _, err := c.Cookie(session.CookieName); err == nil && !session.Guard(c, session.Origin(cfg.FrontendURL)) {
+				return
+			}
 		}
 		c.Next()
 	})
@@ -91,8 +96,9 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 		v1.InitProjectRouter(v1Group, db, cfg.JWTSecret)
 		v1.InitAuditRouter(v1Group, db, cfg.JWTSecret)
 		v1.InitDashboardRouter(v1Group, db, cfg.JWTSecret)
-		v1Group.POST("/upload/avatar", v1.UploadAvatar)
+		v1Group.POST("/upload/avatar", middleware.AuthMiddleware(cfg.JWTSecret, db), v1.UploadAvatar)
 	}
+	sso.Register(r, db, cfg.JWTSecret, cfg.FrontendURL, cfg.CookieSecure)
 
 	return r
 }
