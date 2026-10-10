@@ -65,25 +65,7 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 	r.Static("/uploads", "./uploads")
 
 	// CORS设置 (示例)
-	r.Use(func(c *gin.Context) {
-		if c.GetHeader("Origin") == session.Origin(cfg.FrontendURL) {
-			c.Header("Access-Control-Allow-Origin", session.Origin(cfg.FrontendURL))
-			c.Header("Access-Control-Allow-Credentials", "true")
-			c.Header("Vary", "Origin")
-		}
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(204)
-			return
-		}
-		if c.Request.Method != "GET" && c.Request.Method != "HEAD" {
-			if _, err := c.Cookie(session.CookieName); err == nil && !session.Guard(c, session.Origin(cfg.FrontendURL)) {
-				return
-			}
-		}
-		c.Next()
-	})
+	r.Use(browserCORS(cfg.FrontendURL))
 
 	// 6. 注册路由
 	apiGroup := r.Group("/api")
