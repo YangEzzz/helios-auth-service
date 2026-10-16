@@ -21,6 +21,9 @@ import (
 const CookieName = "helios_session"
 const CSRFCookie = "helios_csrf"
 
+const Lifetime = 30 * 24 * time.Hour
+const CookieMaxAge = int(Lifetime / time.Second)
+
 type Session struct {
 	ID        string    `gorm:"primaryKey;size:64"`
 	UserID    uuid.UUID `gorm:"type:uuid;not null;index"`
@@ -55,7 +58,7 @@ func CSRF(c *gin.Context, secure bool) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		Cookie(c, CSRFCookie, value, 8*3600, secure, false)
+		Cookie(c, CSRFCookie, value, CookieMaxAge, secure, false)
 	}
 	return value, nil
 }
@@ -86,10 +89,10 @@ func Create(c *gin.Context, db *gorm.DB, userID uuid.UUID, secure bool) error {
 				return err
 			}
 		}
-		return tx.Create(&Session{ID: Hash(value), UserID: userID, ExpiresAt: time.Now().Add(8 * time.Hour)}).Error
+		return tx.Create(&Session{ID: Hash(value), UserID: userID, ExpiresAt: time.Now().Add(Lifetime)}).Error
 	})
 	if err == nil {
-		Cookie(c, CookieName, value, 8*3600, secure, true)
+		Cookie(c, CookieName, value, CookieMaxAge, secure, true)
 	}
 	return err
 }

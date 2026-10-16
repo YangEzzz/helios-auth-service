@@ -56,8 +56,11 @@ func Register(r *gin.Engine, db *gorm.DB, secret, frontend string, secure bool) 
 	})
 	admin.Use(middleware.AuthMiddleware(secret, db), middleware.RequireRoles(db, constant.UserRoleAdmin, constant.UserRoleSuperAdmin))
 	admin.GET("/clients", h.ListClients)
-	admin.POST("/clients", h.SaveClient)
-	admin.POST("/clients/:id/rotate", h.Rotate)
+	admin.POST("/clients", func(c *gin.Context) { fail(c, 410, "请在项目的统一登录配置中保存设置") })
+	admin.POST("/clients/:id/rotate", func(c *gin.Context) { fail(c, 410, "请在项目的统一登录配置中更新密钥") })
+	admin.GET("/projects/:project_id", h.ProjectConfig)
+	admin.POST("/projects/:project_id", h.SaveProjectConfig)
+	admin.POST("/projects/:project_id/rotate", h.RotateProjectSecret)
 }
 func fail(c *gin.Context, status int, msg string) {
 	c.JSON(status, gin.H{"code": status, "message": msg})
@@ -119,7 +122,7 @@ func (h *Handler) Authorize(c *gin.Context) {
 			fail(c, 500, "无法初始化登录")
 			return
 		}
-		session.Cookie(c, "helios_browser", browser, 8*3600, h.Secure, true)
+		session.Cookie(c, "helios_browser", browser, session.CookieMaxAge, h.Secure, true)
 	}
 	id, err := session.Random()
 	if err != nil {
@@ -417,88 +420,4 @@ func (h *Handler) ListClients(c *gin.Context) {
 		return
 	}
 	success(c, gin.H{"clients": list})
-}
-func (h *Handler) SaveClient(c *gin.Context) {
-	if !h.csrf(c) {
-		return
-	}
-	var in struct {
-		ID           string    `json:"client_id"`
-		ProjectID    uuid.UUID `json:"project_id"`
-		Name         string    `json:"name"`
-		RedirectURIs []string  `json:"redirect_uris"`
-		Enabled      bool      `json:"enabled"`
-	}
-	if c.ShouldBindJSON(&in) != nil || len(in.ID) < 3 || len(in.ID) > 100 || strings.TrimSpace(in.Name) == "" || len(in.Name) > 255 || len(in.RedirectURIs) == 0 || len(in.RedirectURIs) > 10 {
-		fail(c, 400, "请填写应用标识、名称和回调地址")
-		return
-	}
-	for _, ch := range in.ID {
-		if !(ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' || ch >= '0' && ch <= '9' || ch == '-' || ch == '_') {
-			fail(c, 400, "应用标识仅支持字母、数字、横线和下划线")
-			return
-		}
-	}
-	for _, uri := range in.RedirectURIs {
-		if len(uri) > 2048 || !validRedirect(uri) {
-			fail(c, 400, "回调地址须使用 HTTPS；本地开发可使用 localhost HTTP")
-			return
-		}
-	}
-	var p models.Project
-	if h.DB.First(&p, "id = ?", in.ProjectID).Error != nil {
-		fail(c, 400, "项目不存在")
-		return
-	}
-	var cl Client
-	secret := ""
-	err := h.DB.First(&cl, "id = ?", in.ID).Error
-	creating := errors.Is(err, gorm.ErrRecordNotFound)
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		secret, err = session.Random()
-		if err != nil {
-			fail(c, 500, "无法创建密钥")
-			return
-		}
-		cl = Client{ID: in.ID, ProjectID: in.ProjectID, SecretHash: session.Hash(secret)}
-	} else if err != nil {
-		fail(c, 500, "无法读取应用")
-		return
-	} else if cl.ProjectID != in.ProjectID {
-		fail(c, 400, "应用标识已被其他项目使用")
-		return
-	}
-	cl.Name = strings.TrimSpace(in.Name)
-	cl.RedirectURIs = in.RedirectURIs
-	cl.Enabled = in.Enabled
-	if creating {
-		err = h.DB.Create(&cl).Error
-	} else {
-		err = h.DB.Model(&Client{}).Where("id = ? AND project_id = ?", cl.ID, cl.ProjectID).Select("name", "redirect_uris", "enabled").Updates(&cl).Error
-	}
-	if err != nil {
-		fail(c, 500, "无法保存接入配置")
-		return
-	}
-	op, _ := uuid.Parse(c.GetString("user_id"))
-	_ = h.Audit.LogAction(c.Request.Context(), &op, "sso_client_save", "project:"+p.ProjectIDString, "Saved SSO client "+cl.ID, c.ClientIP())
-	success(c, gin.H{"client": cl, "client_secret": secret})
-}
-func (h *Handler) Rotate(c *gin.Context) {
-	if !h.csrf(c) {
-		return
-	}
-	secret, err := session.Random()
-	if err != nil {
-		fail(c, 500, "无法生成密钥")
-		return
-	}
-	result := h.DB.Model(&Client{}).Where("id = ?", c.Param("id")).Update("secret_hash", session.Hash(secret))
-	if result.Error != nil || result.RowsAffected != 1 {
-		fail(c, 404, "接入应用不存在")
-		return
-	}
-	op, _ := uuid.Parse(c.GetString("user_id"))
-	_ = h.Audit.LogAction(c.Request.Context(), &op, "sso_client_rotate", "client:"+c.Param("id"), "Rotated SSO client secret", c.ClientIP())
-	success(c, gin.H{"client_secret": secret})
 }
