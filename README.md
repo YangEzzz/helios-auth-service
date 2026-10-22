@@ -56,6 +56,8 @@
 
 ## API 接口
 
+*   **公共图片上传：** `POST /api/v1/upload/image`，登录后上传 JPG/PNG/GIF/WebP，最大 10 MiB，按 MD5 去重复用地址；`POST /api/v1/upload/image/check` 可在上传前查询，避免重复传输。详见 [接入说明](docs/公共图片上传.md)。
+
 *   **注册：** `POST /api/auth/register`
     *   请求体示例：`{"email": "test@example.com", "password": "password123"}`
 *   **登录：** `POST /api/auth/login`

@@ -79,6 +79,8 @@ func SetupRouter(cfg *config.Config) *gin.Engine {
 		v1.InitAuditRouter(v1Group, db, cfg.JWTSecret)
 		v1.InitDashboardRouter(v1Group, db, cfg.JWTSecret)
 		v1Group.POST("/upload/avatar", middleware.AuthMiddleware(cfg.JWTSecret, db), v1.UploadAvatar)
+		v1Group.POST("/upload/image", sso.ImageAuth(db, cfg.JWTSecret), v1.UploadImage)
+		v1Group.POST("/upload/image/check", sso.ImageAuth(db, cfg.JWTSecret), v1.CheckImage)
 	}
 	sso.Register(r, db, cfg.JWTSecret, cfg.FrontendURL, cfg.CookieSecure)
 
