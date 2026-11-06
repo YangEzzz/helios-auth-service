@@ -22,22 +22,27 @@ const (
 )
 
 var ActionMap = map[string]string{
-	ActionUserLogin:         "用户登录",
-	ActionUserLogout:        "用户登出",
-	ActionCreateProject:     "创建项目",
-	ActionDeleteProject:     "删除项目",
-	ActionApproveUser:       "审批通过用户",
-	ActionRejectUser:        "审批拒绝用户",
-	ActionLockUser:          "锁定用户",
-	ActionUnlockUser:        "解锁用户",
-	ActionSetUserRole:       "设置用户角色",
-	ActionUpdateAvatar:      "更新用户头像",
-	ActionAddMember:         "添加项目成员",
-	ActionRemoveMember:      "移除项目成员",
-	ActionUpdateMemberRole:  "更新成员角色",
-	ActionAddRoleTemplate:   "添加角色模板",
-	ActionUserRegister:      "提交注册申请",
-	ActionUserExternalLogin: "第三方系统登录",
+	"update_user_departments":  "调整用户部门",
+	"create_department":        "新建部门",
+	"update_department":        "更新部门",
+	"save_department_member":   "更新部门成员",
+	"remove_department_member": "移出部门成员",
+	ActionUserLogin:            "用户登录",
+	ActionUserLogout:           "用户登出",
+	ActionCreateProject:        "创建项目",
+	ActionDeleteProject:        "删除项目",
+	ActionApproveUser:          "审批通过用户",
+	ActionRejectUser:           "审批拒绝用户",
+	ActionLockUser:             "锁定用户",
+	ActionUnlockUser:           "解锁用户",
+	ActionSetUserRole:          "设置用户角色",
+	ActionUpdateAvatar:         "更新用户头像",
+	ActionAddMember:            "添加项目成员",
+	ActionRemoveMember:         "移除项目成员",
+	ActionUpdateMemberRole:     "更新成员角色",
+	ActionAddRoleTemplate:      "添加角色模板",
+	ActionUserRegister:         "提交注册申请",
+	ActionUserExternalLogin:    "第三方系统登录",
 }
 
 func GetActionName(action string) string {
@@ -53,6 +58,9 @@ func GetActionName(action string) string {
 }
 
 func GetResourceName(resource string) string {
+	if strings.HasPrefix(resource, "department:") {
+		return "部门: " + strings.TrimPrefix(resource, "department:")
+	}
 	if strings.HasPrefix(resource, "user:") {
 		return "用户: " + strings.TrimPrefix(resource, "user:")
 	}

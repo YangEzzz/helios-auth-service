@@ -22,7 +22,7 @@ func ImageAuth(db *gorm.DB, jwtSecret string) gin.HandlerFunc {
 		if err != nil {
 			return errImageCredentials
 		}
-		_, err = identity(db.WithContext(c.Request.Context()), client, userID)
+		_, err = authorizedIdentity(db.WithContext(c.Request.Context()), client, userID)
 		return err
 	})
 }

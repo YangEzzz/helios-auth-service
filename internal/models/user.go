@@ -17,8 +17,17 @@ type User struct {
 	UpdatedAt    time.Time           `json:"updated_at" gorm:"autoUpdateTime"`
 	Status       constant.UserStatus `json:"status" gorm:"type:varchar(50)"`
 	Department   string              `json:"department" gorm:"type:varchar(255)"`
+	Departments  []UserDepartment    `json:"departments" gorm:"-"`
 	Reason       string              `json:"reason" gorm:"type:text"`
 	Avatar       string              `json:"avatar" gorm:"type:varchar(511);default:''"`
+}
+
+// UserDepartment is an organization display projection, not a business authorization role.
+type UserDepartment struct {
+	ID        uuid.UUID `json:"id"`
+	Name      string    `json:"name"`
+	Status    string    `json:"status"`
+	IsManager bool      `json:"is_manager"`
 }
 
 // TableName 指定表名

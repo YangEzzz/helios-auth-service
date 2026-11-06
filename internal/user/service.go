@@ -3,6 +3,7 @@ package user
 import (
 	"context"
 	"errors"
+	"github.com/google/uuid"
 	"helios-auth-service/internal/audit"
 	"helios-auth-service/internal/constant"
 	"helios-auth-service/internal/models"
@@ -10,7 +11,7 @@ import (
 
 type Service interface {
 	GetUserByID(ctx context.Context, id string) (*models.User, error)
-	ApproveUser(ctx context.Context, id string) error
+	ApproveUser(ctx context.Context, id string, departmentIDs []uuid.UUID, operatorID string) error
 	RejectUser(ctx context.Context, id string) error
 	LockUser(ctx context.Context, id string) error
 	UnlockUser(ctx context.Context, id string) error
@@ -44,12 +45,8 @@ func (s *service) GetUserByID(ctx context.Context, id string) (*models.User, err
 	return user, nil
 }
 
-func (s *service) ApproveUser(ctx context.Context, id string) error {
-	if err := s.dao.ApproveUser(id); err != nil {
-		return err
-	}
-	_ = s.auditService.LogAction(ctx, nil, "approve_user", "user:"+id, "Approved user", "")
-	return nil
+func (s *service) ApproveUser(ctx context.Context, id string, departmentIDs []uuid.UUID, operatorID string) error {
+	return s.dao.ApproveUser(id, departmentIDs, operatorID)
 }
 
 func (s *service) RejectUser(ctx context.Context, id string) error {

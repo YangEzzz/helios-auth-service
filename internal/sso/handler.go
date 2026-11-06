@@ -314,12 +314,13 @@ func (h *Handler) authenticate(c *gin.Context) (*Client, error) {
 }
 
 type Identity struct {
-	User      gin.H  `json:"user"`
-	ProjectID string `json:"project_id_string"`
-	Role      string `json:"role_in_project"`
+	User         gin.H             `json:"user"`
+	ProjectID    string            `json:"project_id_string"`
+	Role         string            `json:"role_in_project"`
+	Organization *OrganizationInfo `json:"organization,omitempty"`
 }
 
-func identity(tx *gorm.DB, cl *Client, userID uuid.UUID) (*Identity, error) {
+func authorizedIdentity(tx *gorm.DB, cl *Client, userID uuid.UUID) (*Identity, error) {
 	var u models.User
 	var p models.Project
 	var m models.ProjectMembership
@@ -335,7 +336,7 @@ func identity(tx *gorm.DB, cl *Client, userID uuid.UUID) (*Identity, error) {
 	if m.RoleInProject == "" {
 		return nil, gorm.ErrRecordNotFound
 	}
-	return &Identity{profile(&u), p.ProjectIDString, m.RoleInProject}, nil
+	return &Identity{User: profile(&u), ProjectID: p.ProjectIDString, Role: m.RoleInProject}, nil
 }
 func (h *Handler) Exchange(c *gin.Context) {
 	cl, err := h.authenticate(c)

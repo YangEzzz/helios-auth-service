@@ -2,6 +2,7 @@ package v1
 
 import (
 	"errors"
+	"github.com/google/uuid"
 	"strconv"
 
 	"helios-auth-service/internal/audit"
@@ -156,12 +157,15 @@ type UserActionRequest struct {
 }
 
 func (r *UserRouter) ApproveUser(c *gin.Context) {
-	var req UserActionRequest
+	var req struct {
+		ID            string      `json:"id" binding:"required,uuid"`
+		DepartmentIDs []uuid.UUID `json:"department_ids" binding:"required,min=1,max=100"`
+	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(400, gin.H{"error": err.Error(), "code": constant.ErrorCode})
 		return
 	}
-	if err := r.userService.ApproveUser(c.Request.Context(), req.ID); err != nil {
+	if err := r.userService.ApproveUser(c.Request.Context(), req.ID, req.DepartmentIDs, c.GetString("user_id")); err != nil {
 		c.JSON(200, gin.H{"message": err.Error(), "code": constant.ErrorCode})
 		return
 	}
